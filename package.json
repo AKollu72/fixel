@@ -1,0 +1,49 @@
+{
+  "name": "fixel",
+  "version": "0.1.6",
+  "description": "The complete Figma-to-React pipeline — generate components from Figma, enforce design parity in CI, and close the loop back to designers.",
+  "license": "FSL-1.1-MIT",
+  "author": "Amrutha Kollu",
+  "keywords": [
+    "figma",
+    "design-system",
+    "react",
+    "tailwind",
+    "mui",
+    "drift",
+    "cli",
+    "codegen",
+    "design-tokens"
+  ],
+  "bin": {
+    "fixel": "fixel-bin.js"
+  },
+  "main": "./dist/index.js",
+  "files": [
+    "fixel-bin.js",
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "LICENSE",
+    "README.md",
+    "fixel.config.example.json"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "dev": "tsx src/index.ts",
+    "test": "jest --passWithNoTests"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@inquirer/prompts": "^8.5.2"
+  },
+  "devDependencies": {
+    "@types/inquirer": "^9.0.9",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment variables — never commit these
+.env
+.env.local
+.env.*.local
+
+# Figment runtime artifacts
+.figment-scan.json
+node_modules/.cache/figment/
+
+# OS metadata
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+.idea/
+
+# Packed tarballs
+*.tgz
+
+# Fixel runtime artifacts
+.fixel-scan.json
+node_modules/.cache/fixel/
+
+# Local project config + generated output (never commit these from the fixel repo itself)
+fixel.config.json
+src/tokens/
+src/components/

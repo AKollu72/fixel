@@ -1,0 +1,82 @@
+{
+  "_comment": "Copy this file to fixel.config.json and update the values. Run `fixel init` for interactive setup.",
+
+  "framework": "mui",
+  "_framework_comment": "UI framework: 'mui' | 'tailwind' | 'css-modules' | 'other'. Controls which rules are injected into the AI prompt.",
+
+  "storybook": {
+    "_comment": "Determines the @storybook/* adapter imported in generated story files.",
+    "framework": "nextjs-vite"
+  },
+  "_storybook_comment": "Derived adapter: 'nextjs-vite' → '@storybook/nextjs-vite', 'react-vite' → '@storybook/react-vite'.",
+
+  "figma": {
+    "_comment": "Figma access token — MUST be an env-var reference, never a literal value.",
+    "accessToken": "${FIGMA_ACCESS_TOKEN}"
+  },
+
+  "tokens": {
+    "_comment": "Your design-token source file and import paths.",
+    "file": "src/styles/tokens.ts",
+    "importPath": "@/styles/tokens",
+    "semanticExport": "semantic",
+    "constantsExport": "palette",
+    "namingConvention": "semantic.{group}.{role}"
+  },
+  "_tokens_comment": "namingConvention is a pattern string with {group}, {role}, and {state} placeholders. The default 'semantic.{group}.{role}' produces names like 'semantic.badge.bg'. Change the prefix or structure to match your token file's naming convention.",
+
+  "typography": {
+    "_comment": "Typography import path used in generated test files.",
+    "importPath": "@/styles/typography",
+    "file": "src/styles/typography.ts",
+    "scale": {
+      "_comment": "Map every (fontSize/fontWeight) pair used in Figma to a token name + line height. Format: 'SIZE/WEIGHT' or 'SIZE/any'.",
+
+      "10/400": { "token": "labelXs",      "lineHeight": "14px" },
+      "10/500": { "token": "labelXsMedium","lineHeight": "14px" },
+      "11/400": { "token": "labelSm",      "lineHeight": "16px" },
+      "11/500": { "token": "labelSmMedium","lineHeight": "16px" },
+      "12/400": { "token": "labelMd",      "lineHeight": "18px" },
+      "12/500": { "token": "labelMdMedium","lineHeight": "18px" },
+      "13/400": { "token": "bodyXs",       "lineHeight": "20px" },
+      "13/500": { "token": "bodyXsMedium", "lineHeight": "20px" },
+      "14/400": { "token": "bodySm",       "lineHeight": "20px" },
+      "14/500": { "token": "bodySmMedium", "lineHeight": "20px" },
+      "16/400": { "token": "bodyMd",       "lineHeight": "24px" },
+      "16/500": { "token": "bodyMdMedium", "lineHeight": "24px" },
+      "18/400": { "token": "headingXs",    "lineHeight": "28px" },
+      "20/600": { "token": "headingSm",    "lineHeight": "28px" },
+      "24/600": { "token": "headingMd",    "lineHeight": "32px" },
+      "32/700": { "token": "headingLg",    "lineHeight": "40px" }
+    }
+  },
+
+  "output": {
+    "_comment": "Where fixel generate writes component files.",
+    "componentDir": "src/components",
+    "testSubdir": "__tests__"
+  },
+
+  "testing": {
+    "_comment": "Testing framework used in generated test files.",
+    "framework": "jest",
+    "renderLibrary": "@testing-library/react"
+  },
+
+  "ai": {
+    "_comment": "AI provider config. API key is NEVER stored here — read from env.",
+    "provider": "anthropic",
+    "model": "claude-sonnet-4-6"
+  },
+
+  "prohibitedPatterns": [
+    {
+      "_comment": "Add project-specific anti-patterns. These run in addition to fixel's built-ins.",
+      "name": "no-hardcoded-zindex",
+      "pattern": "zIndex\\s*:\\s*\\d{3,}",
+      "message": "Use z-index tokens from the design system instead of raw numbers.",
+      "severity": "error",
+      "frameworks": ["mui"]
+    }
+  ]
+}
