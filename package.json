@@ -4,6 +4,11 @@
   "description": "The complete Figma-to-React pipeline — generate components from Figma, enforce design parity in CI, and close the loop back to designers.",
   "license": "FSL-1.1-MIT",
   "author": "Amrutha Kollu",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AKollu72/fixel.git"
+  },
+  "homepage": "https://github.com/AKollu72/fixel",
   "keywords": [
     "figma",
     "design-system",
