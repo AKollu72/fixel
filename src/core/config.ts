@@ -175,14 +175,12 @@ export interface TestingConfig {
 
 // ── ai ────────────────────────────────────────────────────────────────────────
 
-export type AiProvider = 'anthropic' | 'openai';
+export type AiProvider = 'anthropic';
 
 export interface AiConfig {
   /**
-   * AI provider.  The API key is read from the corresponding env var —
-   * it is NEVER stored in config:
-   *   "anthropic" → ANTHROPIC_API_KEY
-   *   "openai"    → OPENAI_API_KEY
+   * AI provider.  Only "anthropic" is supported.
+   * The API key is read from ANTHROPIC_API_KEY — never stored in config.
    */
   provider: AiProvider;
   /**
@@ -291,7 +289,7 @@ export interface ResolvedConfig {
 export const CONFIG_FILENAME = 'fixel.config.json';
 
 const SUPPORTED_FORMATS:   ReadonlySet<string> = new Set(['typescript-object']);
-const SUPPORTED_PROVIDERS: ReadonlySet<string> = new Set(['anthropic', 'openai']);
+const SUPPORTED_PROVIDERS: ReadonlySet<string> = new Set(['anthropic']);
 
 const DEFAULT_FRAMEWORK         = 'mui';
 const DEFAULT_STORYBOOK_FW      = 'nextjs-vite';
@@ -544,15 +542,13 @@ export function parseNodeArg(raw: string): ParsedNodeArg {
  *
  * @throws {FixelConfigError} when the expected env var is not set.
  */
-export function resolveAiApiKey(config: ResolvedConfig): string {
-  const envVarName =
-    config.ai.provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY';
-  const key = process.env[envVarName];
+export function resolveAiApiKey(_config: ResolvedConfig): string {
+  const key = process.env['ANTHROPIC_API_KEY'];
   if (!key) {
     throw new FixelConfigError(
-      `AI provider "${config.ai.provider}" requires the ${envVarName} env var, which is not set.\n` +
+      `fixel generate requires ANTHROPIC_API_KEY, which is not set.\n` +
       `  Export it before running fixel:\n` +
-      `    export ${envVarName}=<your-api-key>\n` +
+      `    export ANTHROPIC_API_KEY=<your-api-key>\n` +
       `  Or add it to .env.local in your project root.\n` +
       `  The API key is NEVER stored in fixel.config.json.`,
     );
@@ -743,8 +739,7 @@ export function loadConfig(configPath?: string): ResolvedConfig {
   if (!SUPPORTED_PROVIDERS.has(provider)) {
     throw new FixelConfigError(
       `ai.provider "${provider}" is not supported in ${filename}.\n` +
-      `  Supported providers: ${[...SUPPORTED_PROVIDERS].map((p) => `"${p}"`).join(', ')}\n` +
-      `  The API key is read from the corresponding env var — never stored in config.`,
+      `  Supported provider: "anthropic" (reads ANTHROPIC_API_KEY — never stored in config).`,
     );
   }
 

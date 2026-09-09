@@ -1,6 +1,6 @@
 {
   "name": "fixel",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "CI guard for AI-generated React — token-level drift detection against Figma, prohibited-pattern enforcement, and findings posted back to the design canvas.",
   "license": "FSL-1.1-MIT",
   "author": "Amrutha Kollu",
@@ -43,7 +43,12 @@
     "build": "tsc",
     "prepublishOnly": "npm run build",
     "dev": "tsx src/index.ts",
-    "test": "jest --passWithNoTests"
+    "test": "jest"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": ["<rootDir>/src/**/__tests__/**/*.test.ts"]
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
@@ -52,7 +57,10 @@
   },
   "devDependencies": {
     "@types/inquirer": "^9.0.9",
+    "@types/jest": "^29.5.0",
     "@types/node": "^22.0.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0"
   },

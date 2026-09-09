@@ -2,6 +2,35 @@
 
 All notable changes to Fixel are documented here.
 
+## [0.2.1] — 2026-09-09
+
+### Fixed
+
+- **`fixel scan` config now genuinely optional** — local scan no longer
+  hard-fails when `fixel.config.json` is absent. Detects framework from
+  `package.json` and falls back to built-in defaults, printing a visible
+  warning. Token-file check is skipped when no config is on disk.
+
+- **OpenAI provider removed** — `ai.provider: "openai"` was silently broken
+  since `callAI()` always called Anthropic's API regardless. The option is
+  removed from the type, the validator, and the docs. Only `"anthropic"` is
+  supported; set `ANTHROPIC_API_KEY`.
+
+- **`fixel verify --node` without `--component` now errors explicitly** —
+  previously applied one Figma node's live data to every component in the
+  directory, silently producing wrong results. Now exits 1 with a clear
+  message requiring `--component`.
+
+### Added
+
+- **Automated test suite** — `src/cli/__tests__/scan-local.test.ts` covers
+  the six audit patterns (raw-hex, raw-rgba, bare-border-radius, both Tailwind
+  arbitrary-value patterns, and the template-literal known limitation). Adds
+  `jest`, `ts-jest`, and `@types/jest` to dev dependencies. `npm test` now
+  actually runs tests.
+
+---
+
 ## [0.2.0] — 2026-09-09
 
 ### Added

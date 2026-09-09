@@ -218,6 +218,21 @@ function printComponentReport(report: ComponentReport, isLive: boolean): void {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
 
+  // Require --component when --node is used: applying one node's live Figma
+  // data to every component in the directory would produce silently wrong results.
+  if (args.nodeRaw && !args.component) {
+    console.error(
+      `\n  ${C.red}✗${C.reset}  --node requires --component.\n\n` +
+      `  Passing --node without --component would apply one Figma node's data\n` +
+      `  to every component in the directory — almost certainly wrong.\n\n` +
+      `  Usage:\n` +
+      `    fixel verify --component Badge --node FILEKEY:NODEID\n\n` +
+      `  To check all components offline against their stored specs:\n` +
+      `    fixel verify\n`,
+    );
+    process.exit(1);
+  }
+
   loadEnvFile();
   const config    = loadConfig();
   const overrides = loadOverrides(process.cwd());

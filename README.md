@@ -121,7 +121,7 @@ automatically:
 
 ```sh
 FIGMA_ACCESS_TOKEN=your_figma_pat
-ANTHROPIC_API_KEY=your_anthropic_key   # or OPENAI_API_KEY
+ANTHROPIC_API_KEY=your_anthropic_key
 ```
 
 ## Commands
@@ -322,8 +322,8 @@ To post findings to the Figma canvas on drift:
 `figma.accessToken` must be an environment variable reference — never a
 literal value.
 
-Supported frameworks: `tailwind`, `mui`. Supported AI providers: `anthropic`
-(reads `ANTHROPIC_API_KEY`), `openai` (reads `OPENAI_API_KEY`).
+Supported frameworks: `tailwind`, `mui`. Supported AI provider: `anthropic`
+(reads `ANTHROPIC_API_KEY`).
 
 ## Known limitations
 

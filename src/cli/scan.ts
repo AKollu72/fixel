@@ -36,6 +36,7 @@ import {
   loadEnvFile,
   parseNodeArg,
   resolveFigmaToken,
+  type ResolvedConfig,
 } from '../core/config';
 
 import {
@@ -190,19 +191,83 @@ function collectReactFiles(dir: string): string[] {
   return results;
 }
 
+// ─── Fallback config (no fixel.config.json) ──────────────────────────────────
+
+/**
+ * Auto-detects the UI framework from package.json dependencies.
+ * Falls back to 'tailwind' when package.json is absent or unreadable.
+ */
+function detectFramework(): string {
+  try {
+    const pkgPath = path.join(process.cwd(), 'package.json');
+    if (!fs.existsSync(pkgPath)) return 'tailwind';
+    const pkg  = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as Record<string, unknown>;
+    const deps = {
+      ...(pkg['dependencies']    as Record<string, unknown> | undefined ?? {}),
+      ...(pkg['devDependencies'] as Record<string, unknown> | undefined ?? {}),
+    };
+    if ('@mui/material' in deps || '@material-ui/core' in deps) return 'mui';
+    if ('tailwindcss' in deps) return 'tailwind';
+  } catch { /* best-effort */ }
+  return 'tailwind';
+}
+
+/**
+ * Builds a minimal ResolvedConfig adequate for auditCode().
+ * Only `framework` and `prohibitedPatterns` are used by the local scan engine.
+ */
+function buildFallbackConfig(framework: string): ResolvedConfig {
+  const patterns: string[] =
+    framework === 'mui'
+      ? ['raw-hex', 'raw-rgba', 'bare-border-radius']
+      : ['raw-hex', 'raw-rgba', 'tailwind-raw-hex-arbitrary', 'tailwind-raw-rgb-arbitrary'];
+  return {
+    figma:     { accessToken: '' },
+    framework,
+    storybook: { framework: 'nextjs-vite', adapterPackage: '@storybook/nextjs-vite' },
+    tokens: {
+      file: '', format: 'typescript-object', importPath: '',
+      semanticExport: 'semantic', constantsExport: 'constants',
+      namingConvention: 'semantic.{group}.{role}',
+    },
+    typography: { importPath: '', scale: {}, tailwindClass: 'typography-{token}' },
+    output:     { componentDir: './src/components', testSubdir: '__tests__' },
+    testing:    { framework: 'jest', renderLibrary: '@testing-library/react' },
+    ai:         { provider: 'anthropic', model: 'claude-sonnet-4-6' },
+    prohibitedPatterns: patterns,
+  } as ResolvedConfig;
+}
+
 /** Run the prohibited-pattern audit on all React files under localPath. */
 async function runLocalScan(localPath: string): Promise<void> {
   loadEnvFile();
-  const config = loadConfig();
 
-  // ── Check token file exists ────────────────────────────────────────────────
-  const tokenFilePath = path.resolve(process.cwd(), config.tokens.file);
-  if (!fs.existsSync(tokenFilePath)) {
-    console.error(
-      `\n  ${C.yellow}No token file found at ${config.tokens.file}${C.reset}\n` +
-      `  Run "fixel import --file FILEKEY --write" to generate it.\n`,
-    );
-    process.exit(1);
+  // ── Load config (falls back to built-in defaults when none found) ──────────
+  let config: ResolvedConfig;
+  let usingFallback = false;
+
+  try {
+    config = loadConfig();
+  } catch (err) {
+    if (err instanceof FixelConfigError) {
+      const framework = detectFramework();
+      config       = buildFallbackConfig(framework);
+      usingFallback = true;
+    } else {
+      throw err;
+    }
+  }
+
+  // ── Check token file exists (skip when no config was found on disk) ────────
+  if (!usingFallback) {
+    const tokenFilePath = path.resolve(process.cwd(), config.tokens.file);
+    if (!fs.existsSync(tokenFilePath)) {
+      console.error(
+        `\n  ${C.yellow}No token file found at ${config.tokens.file}${C.reset}\n` +
+        `  Run "fixel import --file FILEKEY --write" to generate it.\n`,
+      );
+      process.exit(1);
+    }
   }
 
   // ── Locate files ───────────────────────────────────────────────────────────
@@ -216,8 +281,13 @@ async function runLocalScan(localPath: string): Promise<void> {
 
   console.log(`\n${C.bold}  fixel scan${C.reset}  ${C.dim}local${C.reset}`);
   console.log(`  Path:      ${localPath}`);
-  console.log(`  Framework: ${config.framework}`);
-  console.log(`  Tokens:    ${config.tokens.file}`);
+  if (usingFallback) {
+    console.log(`  ${C.yellow}⚠${C.reset}  No fixel.config.json — using built-in defaults`);
+  }
+  console.log(`  Framework: ${config.framework}${usingFallback ? ` ${C.dim}(auto-detected)${C.reset}` : ''}`);
+  if (!usingFallback) {
+    console.log(`  Tokens:    ${config.tokens.file}`);
+  }
 
   if (files.length === 0) {
     console.log(`\n  ${C.yellow}No .tsx / .jsx files found under ${localPath}${C.reset}\n`);

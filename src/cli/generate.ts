@@ -192,7 +192,7 @@ const SLEEP = (ms: number): Promise<void> =>
   new Promise((r) => setTimeout(r, ms));
 
 /**
- * Calls the configured AI provider and returns the raw response text.
+ * Calls the Anthropic API and returns the raw response text.
  * Retries up to 3 times on rate-limit errors with exponential backoff.
  */
 async function callAI(
