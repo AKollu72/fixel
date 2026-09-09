@@ -2,6 +2,40 @@
 
 All notable changes to Fixel are documented here.
 
+## [0.2.3] — 2026-09-09
+
+### Fixed
+
+- **raw-hex catches backtick template literals** — `src/core/audit.ts` now
+  uses a two-pass approach: pass 1 catches hex adjacent to any string delimiter
+  (`'`, `"`, `` ` ``); pass 2 scans the content of backtick-delimited template
+  literals for hex not adjacent to the opener, catching
+  `` css`color: #1a73e8;` `` and similar CSS-in-JS patterns.
+
+- **`fixel scan` now collects `.ts` and `.js` files** — theme files, style
+  constants, and utility modules stored in `.ts`/`.js` are now scanned.
+  Excluded: `*.test.*`, `*.spec.*`, `*.d.ts`, `*.config.ts`, `*.config.js`.
+
+- **MCP server timeout** — `runFixel` in `src/mcp/server.ts` now passes a
+  60-second timeout to `spawnSync`. Configurable via `FIXEL_MCP_TIMEOUT_MS`
+  env var. Hung Figma calls no longer block the server indefinitely; a clear
+  error message is returned on timeout.
+
+### Added
+
+- **`collectReactFiles` exported** — now importable for testing without
+  triggering the CLI entry point (`require.main === module` guard added).
+- **MCP smoke test** — `test/mcp-smoke.md` documents the manual test
+  procedure: `claude mcp add` command, per-tool call shapes, and a
+  timeout-verification step against the fixel-journey-test fixture repo.
+- **Automated tests for file collection** — 6 new tests for `collectReactFiles`
+  covering .ts/.js inclusion and .test.ts/.d.ts/.config.ts exclusion.
+- **Backtick template literal tests** — the former known-limitation test now
+  asserts the fix works; 2 new tests added (CSS tagged template, comment
+  non-flag).
+
+---
+
 ## [0.2.1] — 2026-09-09
 
 ### Fixed

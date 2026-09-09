@@ -8,7 +8,12 @@
  * explicitly documented as passing tests so regressions are visible.
  */
 
-import { auditCode } from '../../core/audit';
+import * as os   from 'node:os';
+import * as fs   from 'node:fs';
+import * as path from 'node:path';
+
+import { auditCode }         from '../../core/audit';
+import { collectReactFiles } from '../scan';
 import type { ResolvedConfig } from '../../core/config';
 
 // ─── Config helpers ───────────────────────────────────────────────────────────
@@ -61,11 +66,22 @@ describe('auditCode — raw-hex', () => {
     expect(violations.filter((v) => v.pattern === 'raw-hex')).toHaveLength(0);
   });
 
-  // Known limitation — documented so any future fix is visible as a test change.
-  it('KNOWN LIMITATION: does not catch hex in backtick template literals', () => {
+  // Fix 0.2.3: backtick template literals are now caught.
+  it('catches hex in a bare backtick template literal', () => {
     // eslint-disable-next-line no-template-curly-in-string
     const violations = auditCode('const color = `#1a73e8`;', MUI_CONFIG);
-    // This should ideally be caught, but currently is not.
+    expect(violations.filter((v) => v.pattern === 'raw-hex')).toHaveLength(1);
+  });
+
+  it('catches hex embedded inside a CSS tagged template literal', () => {
+    // e.g. styled-components / emotion: css`color: #1a73e8;`
+    const violations = auditCode('const s = css`color: #1a73e8; background: #fff;`;', MUI_CONFIG);
+    expect(violations.filter((v) => v.pattern === 'raw-hex').length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('does NOT flag hex inside a single-line comment (comment is stripped)', () => {
+    const code = '// The brand blue is #1a73e8 — use semantic.action.primary\nconst x = 1;';
+    const violations = auditCode(code, MUI_CONFIG);
     expect(violations.filter((v) => v.pattern === 'raw-hex')).toHaveLength(0);
   });
 
@@ -203,6 +219,78 @@ const color = semantic.action.primary;
     const violations = auditCode(code, MUI_CONFIG);
     // Comments are stripped before pattern matching — no violation should fire.
     expect(violations.filter((v) => v.pattern === 'raw-hex')).toHaveLength(0);
+  });
+});
+
+// ─── collectReactFiles — extension and exclusion rules ───────────────────────
+
+describe('collectReactFiles — file extension rules', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fixel-test-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  /** Write a file relative to tmpDir and return its absolute path. */
+  function write(name: string, content = ''): string {
+    const p = path.join(tmpDir, name);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, content, 'utf8');
+    return p;
+  }
+
+  it('collects .ts files', () => {
+    write('theme.ts', 'export const primary = "#1a73e8";');
+    const files = collectReactFiles(tmpDir);
+    expect(files.some((f) => f.endsWith('theme.ts'))).toBe(true);
+  });
+
+  it('collects .js files', () => {
+    write('colors.js', 'module.exports = { primary: "#1a73e8" };');
+    const files = collectReactFiles(tmpDir);
+    expect(files.some((f) => f.endsWith('colors.js'))).toBe(true);
+  });
+
+  it('collects .tsx and .jsx files as before', () => {
+    write('Button.tsx');
+    write('Badge.jsx');
+    const files = collectReactFiles(tmpDir);
+    expect(files.some((f) => f.endsWith('Button.tsx'))).toBe(true);
+    expect(files.some((f) => f.endsWith('Badge.jsx'))).toBe(true);
+  });
+
+  it('excludes *.test.ts files', () => {
+    write('theme.test.ts', 'const x = "#1a73e8";');
+    const files = collectReactFiles(tmpDir);
+    expect(files.some((f) => f.endsWith('theme.test.ts'))).toBe(false);
+  });
+
+  it('excludes *.spec.ts files', () => {
+    write('theme.spec.ts');
+    const files = collectReactFiles(tmpDir);
+    expect(files.some((f) => f.endsWith('theme.spec.ts'))).toBe(false);
+  });
+
+  it('excludes *.d.ts declaration files', () => {
+    write('types.d.ts', 'export type Color = string;');
+    const files = collectReactFiles(tmpDir);
+    expect(files.some((f) => f.endsWith('types.d.ts'))).toBe(false);
+  });
+
+  it('excludes *.config.ts files', () => {
+    write('tailwind.config.ts');
+    const files = collectReactFiles(tmpDir);
+    expect(files.some((f) => f.endsWith('tailwind.config.ts'))).toBe(false);
+  });
+
+  it('excludes *.config.js files', () => {
+    write('jest.config.js');
+    const files = collectReactFiles(tmpDir);
+    expect(files.some((f) => f.endsWith('jest.config.js'))).toBe(false);
   });
 });
 

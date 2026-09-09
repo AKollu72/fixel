@@ -170,8 +170,17 @@ function applyTokenKeyFormatting(patch: string): string {
 
 // ─── Local scan helpers ───────────────────────────────────────────────────────
 
-/** Recursively collect .tsx and .jsx files, skipping common noise dirs. */
-function collectReactFiles(dir: string): string[] {
+/**
+ * Recursively collect React/TypeScript source files, skipping noise dirs
+ * and non-source files.
+ *
+ * Collected extensions: .tsx, .ts, .jsx, .js
+ * Excluded:
+ *   *.test.*  / *.spec.*  — test files
+ *   *.d.ts                — TypeScript declaration files
+ *   *.config.ts / *.config.js — config files (tailwind.config.ts etc.)
+ */
+export function collectReactFiles(dir: string): string[] {
   const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.next', 'coverage']);
   const results: string[] = [];
   let entries: fs.Dirent[];
@@ -184,7 +193,13 @@ function collectReactFiles(dir: string): string[] {
     if (entry.isDirectory()) {
       if (SKIP_DIRS.has(entry.name)) continue;
       results.push(...collectReactFiles(path.join(dir, entry.name)));
-    } else if (/\.(tsx|jsx)$/.test(entry.name)) {
+    } else if (/\.(tsx?|jsx?)$/.test(entry.name)) {
+      if (
+        /\.test\./.test(entry.name)           ||   // *.test.ts, *.test.tsx, etc.
+        /\.spec\./.test(entry.name)           ||   // *.spec.*
+        /\.d\.ts$/.test(entry.name)           ||   // *.d.ts declaration files
+        /\.config\.(ts|js)$/.test(entry.name)      // tailwind.config.ts etc.
+      ) continue;
       results.push(path.join(dir, entry.name));
     }
   }
@@ -506,8 +521,10 @@ async function main(): Promise<void> {
 }
 
 // ─── Entry ────────────────────────────────────────────────────────────────────
+// Guard so tests can import collectReactFiles without triggering the CLI.
 
-main().catch((err: unknown) => {
+if (require.main === module) {
+  main().catch((err: unknown) => {
   if (err instanceof FixelConfigError) {
     console.error(`\n  ${C.yellow}Config error:${C.reset} ${err.message}\n`);
     process.exit(1);
@@ -521,4 +538,5 @@ main().catch((err: unknown) => {
   }
   console.error(`\n  ${C.red}Error:${C.reset} ${err instanceof Error ? err.message : String(err)}\n`);
   process.exit(1);
-});
+  });
+}

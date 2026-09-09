@@ -139,13 +139,44 @@ interface RunResult {
   isError: boolean;
 }
 
+/** Default spawnSync timeout — covers slow Figma API calls on poor connections. */
+const DEFAULT_TIMEOUT_MS = 60_000;
+
+/**
+ * Resolves the effective timeout from the FIXEL_MCP_TIMEOUT_MS env var.
+ * Falls back to DEFAULT_TIMEOUT_MS when the var is absent or not a positive integer.
+ */
+function resolveTimeout(): number {
+  const raw = process.env['FIXEL_MCP_TIMEOUT_MS'];
+  if (!raw) return DEFAULT_TIMEOUT_MS;
+  const n = parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : DEFAULT_TIMEOUT_MS;
+}
+
 function runFixel(fixelArgs: string[]): RunResult {
+  const timeoutMs = resolveTimeout();
+
   const result = spawnSync(process.execPath, [fixelBinPath(), ...fixelArgs], {
-    encoding: 'utf8',
-    env:      { ...process.env },
-    cwd:      process.cwd(),
+    encoding:  'utf8',
+    env:       { ...process.env },
+    cwd:       process.cwd(),
     maxBuffer: 10 * 1024 * 1024, // 10 MB
+    timeout:   timeoutMs,
   });
+
+  // spawnSync sets result.error when the child could not be started or timed out.
+  // ETIMEDOUT is the code for a timeout; other errors indicate a launch failure.
+  if (result.error) {
+    const code      = (result.error as NodeJS.ErrnoException).code;
+    const isTimeout = code === 'ETIMEDOUT';
+    const msg = isTimeout
+      ? `[fixel-mcp] Command timed out after ${timeoutMs}ms.\n` +
+        `  Set FIXEL_MCP_TIMEOUT_MS env var to increase the limit.\n` +
+        `  Args: fixel ${fixelArgs.join(' ')}`
+      : `[fixel-mcp] Failed to start fixel: ${result.error.message}`;
+    return { output: msg, isError: true };
+  }
+
   const output = [result.stdout, result.stderr].filter(Boolean).join('').trim();
   return {
     output:  output || '(no output)',

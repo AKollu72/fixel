@@ -104,18 +104,26 @@ function sourceLine(original: string, index: number): string {
 const BUILT_IN_PATTERNS: PatternDef[] = [
 
   // ── raw-hex ────────────────────────────────────────────────────────────────
-  // Fires when a hex colour literal appears inside a string in generated code.
-  // Matches '#rrggbb', '#rrggbbaa', '#rgb', '#rgba' forms inside single or
-  // double quotes.  Not fired on bare identifiers like PR #443 in comments
-  // (comments are stripped before scanning).
+  // Fires when a hex colour literal appears inside a string or template
+  // literal in generated code.  Two-pass approach:
+  //
+  //   Pass 1 — delimiter-adjacent:  '#hex', "#hex", `#hex`
+  //   Pass 2 — template-literal content:  css`color: #hex;`, `background: #hex`
+  //
+  // Not fired on bare identifiers like PR #443 in comments (comments are
+  // stripped before scanning).  Pass 2 uses a simple backtick-pair scan;
+  // escaped backticks and ${} boundaries inside a single literal are not
+  // tracked — this is adequate for generated component code.
   {
     id:         'raw-hex',
     severity:   'error',
     frameworks: '*',
     check(stripped, original) {
       const violations: AuditViolation[] = [];
-      const re = /['"]#[0-9a-fA-F]{3,8}['"]/g;
-      for (const m of stripped.matchAll(re)) {
+
+      // ── Pass 1: hex immediately adjacent to a string delimiter (', ", `) ──
+      const reAdj = /['"`]#[0-9a-fA-F]{3,8}['"`]/g;
+      for (const m of stripped.matchAll(reAdj)) {
         const pos = positionAt(original, m.index ?? 0);
         violations.push({
           pattern:    'raw-hex',
@@ -128,6 +136,37 @@ const BUILT_IN_PATTERNS: PatternDef[] = [
             '  Run "fixel scan --node <id>" to identify which token covers this colour.',
         });
       }
+
+      // ── Pass 2: hex inside template literal content (not opener-adjacent) ──
+      // Finds backtick-delimited strings and searches their content for hex.
+      // Skips matches where the hex is immediately after the opening backtick —
+      // those are already reported by pass 1 (e.g. `#1a73e8`).
+      const reTpl = /`[^`]*`/g;
+      for (const tplMatch of stripped.matchAll(reTpl)) {
+        const tplContent  = tplMatch[0];
+        const tplStartIdx = tplMatch.index ?? 0;
+        const reHex       = /#[0-9a-fA-F]{3,8}/g;
+
+        for (const hexMatch of tplContent.matchAll(reHex)) {
+          const posInTpl = hexMatch.index ?? 0;
+          // If the preceding char is ` the opener, pass 1 already caught this.
+          const before = posInTpl > 0 ? tplContent[posInTpl - 1] : '';
+          if (before === '`') continue;
+          const globalIdx = tplStartIdx + posInTpl;
+          const pos       = positionAt(original, globalIdx);
+          violations.push({
+            pattern:    'raw-hex',
+            severity:   'error',
+            line:       pos.line,
+            column:     pos.column,
+            snippet:    sourceLine(original, globalIdx).slice(0, 120),
+            suggestion:
+              'Replace this hex literal with a semantic token from your token file.\n' +
+              '  Run "fixel scan --node <id>" to identify which token covers this colour.',
+          });
+        }
+      }
+
       return violations;
     },
   },
