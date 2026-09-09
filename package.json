@@ -1,7 +1,7 @@
 {
   "name": "fixel",
-  "version": "0.1.6",
-  "description": "The complete Figma-to-React pipeline — generate components from Figma, enforce design parity in CI, and close the loop back to designers.",
+  "version": "0.2.0",
+  "description": "CI guard for AI-generated React — token-level drift detection against Figma, prohibited-pattern enforcement, and findings posted back to the design canvas.",
   "license": "FSL-1.1-MIT",
   "author": "Amrutha Kollu",
   "repository": {
@@ -18,14 +18,21 @@
     "drift",
     "cli",
     "codegen",
-    "design-tokens"
+    "design-tokens",
+    "verification",
+    "ai-codegen",
+    "drift-detection",
+    "mcp",
+    "ci"
   ],
   "bin": {
-    "fixel": "fixel-bin.js"
+    "fixel": "fixel-bin.js",
+    "fixel-mcp": "fixel-mcp-bin.js"
   },
   "main": "./dist/index.js",
   "files": [
     "fixel-bin.js",
+    "fixel-mcp-bin.js",
     "dist/**/*.js",
     "dist/**/*.d.ts",
     "LICENSE",
@@ -40,7 +47,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
-    "@inquirer/prompts": "^8.5.2"
+    "@inquirer/prompts": "^8.5.2",
+    "@modelcontextprotocol/sdk": "^1.30.0"
   },
   "devDependencies": {
     "@types/inquirer": "^9.0.9",

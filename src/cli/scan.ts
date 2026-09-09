@@ -3,26 +3,28 @@
 // Licensed under the Functional Source License, Version 1.1 (FSL-1.1-MIT) — see LICENSE for details.
 
 /**
- * fixel scan — token reconnaissance for a Figma component
+ * fixel scan — two modes
  *
- * Fetches a Figma node, extracts every unique fill colour, compares them
- * against the project's token file, and prints a ready-to-paste patch for
- * any missing or primitive-only tokens.
+ * LOCAL MODE (no Figma call):
+ *   fixel scan <path>
  *
- * Usage:
- *   fixel scan --node FILEKEY:NODEID
- *   fixel scan --node FILEKEY:NODEID --group badge
- *   fixel scan --node FILEKEY:NODEID --group badge --write
+ *   Loads the project's token file from fixel.config.json, walks all .tsx
+ *   and .jsx files under <path>, and runs the prohibited-pattern audit on each.
+ *   Reports raw-hex, raw-rgba, bare-border-radius, and framework-specific
+ *   patterns.  Exits 1 when any error-severity violation is found.
  *
- * Flags:
- *   --node  <FILEKEY:NODEID>  Figma node to scan (required)
- *   --group <name>            Token group name for suggestions (default: "component")
- *   --write                   Also write suggestions to .fixel-scan.json
- *   --no-cache                Bypass the 24-hour Figma API cache
+ *   If no token file is configured, exits 1 with a pointer to "fixel import".
+ *
+ * FIGMA MODE (token gap analysis):
+ *   fixel scan --node FILEKEY:NODEID [--group <name>] [--write] [--no-cache]
+ *
+ *   Fetches a Figma node, extracts every unique fill colour, compares them
+ *   against the project's token file, and prints a ready-to-paste patch for
+ *   any missing or primitive-only tokens.  Always exits 0.
  *
  * Exit codes:
- *   0  scan complete (including when tokens are missing — missing tokens are not an error)
- *   1  fatal error (Figma API failure, config missing, token file not found)
+ *   0  scan complete (local: no violations; figma: always 0)
+ *   1  violations found (local) | fatal error (either mode)
  */
 
 import * as fs   from 'node:fs';
@@ -52,6 +54,11 @@ import {
   type TokenSuggestion,
 } from '../core/tokens';
 
+import {
+  auditCode,
+  type AuditViolation,
+} from '../core/audit';
+
 // ─── ANSI helpers ─────────────────────────────────────────────────────────────
 
 const C = {
@@ -74,11 +81,15 @@ function normalizeNodeArg(nodeArg: string): string {
   return `${fileKey}:${nodeId}`;
 }
 
+type ScanMode = 'local' | 'figma';
+
 interface ScanArgs {
-  nodeRaw:  string;
-  group:    string;
-  write:    boolean;
-  noCache:  boolean;
+  mode:      ScanMode;
+  localPath: string | null;   // set in local mode
+  nodeRaw:   string | null;   // set in figma mode
+  group:     string;
+  write:     boolean;
+  noCache:   boolean;
 }
 
 function parseArgs(argv: string[]): ScanArgs {
@@ -88,17 +99,53 @@ function parseArgs(argv: string[]): ScanArgs {
   };
 
   const nodeRaw = flag('--node');
+
+  // A positional argument is any arg that:
+  //   (a) does not start with '--'
+  //   (b) is not the value immediately after a known flag
+  const flagValuePositions = new Set<number>();
+  ['--node', '--group'].forEach((f) => {
+    const i = argv.indexOf(f);
+    if (i !== -1) flagValuePositions.add(i + 1);
+  });
+  const positional = argv.find(
+    (a, i) => !a.startsWith('--') && !flagValuePositions.has(i),
+  ) ?? null;
+
+  // Local mode: positional path arg, no --node
+  if (positional && !nodeRaw) {
+    return {
+      mode:      'local',
+      localPath: positional,
+      nodeRaw:   null,
+      group:     'component',
+      write:     false,
+      noCache:   false,
+    };
+  }
+
+  // Figma mode: --node required
   if (!nodeRaw) {
-    console.error('\n  Usage: fixel scan --node FILEKEY:NODEID [--group <name>]\n');
-    console.error('  Example: fixel scan --node AbCdEfGhIjKlMnOpQrStUv:397:23320 --group badge\n');
+    console.error(`
+  Usage:
+
+    fixel scan <path>                         Audit local React files (no Figma call)
+    fixel scan --node FILEKEY:NODEID          Token gap analysis for a Figma node
+
+  Examples:
+    fixel scan ./src
+    fixel scan --node AbCdEfGhIjKlMnOpQrStUv:397:23320 --group badge
+`);
     process.exit(1);
   }
 
   return {
-    nodeRaw: normalizeNodeArg(nodeRaw),
-    group:   (flag('--group') ?? 'component').trim(),
-    write:   argv.includes('--write'),
-    noCache: argv.includes('--no-cache'),
+    mode:      'figma',
+    localPath: null,
+    nodeRaw:   normalizeNodeArg(nodeRaw),
+    group:     (flag('--group') ?? 'component').trim(),
+    write:     argv.includes('--write'),
+    noCache:   argv.includes('--no-cache'),
   };
 }
 
@@ -120,7 +167,117 @@ function applyTokenKeyFormatting(patch: string): string {
   ).join('\n');
 }
 
-// ─── Report printer ───────────────────────────────────────────────────────────
+// ─── Local scan helpers ───────────────────────────────────────────────────────
+
+/** Recursively collect .tsx and .jsx files, skipping common noise dirs. */
+function collectReactFiles(dir: string): string[] {
+  const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.next', 'coverage']);
+  const results: string[] = [];
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return results; // unreadable directory — skip silently
+  }
+  for (const entry of entries) {
+    if (entry.isDirectory()) {
+      if (SKIP_DIRS.has(entry.name)) continue;
+      results.push(...collectReactFiles(path.join(dir, entry.name)));
+    } else if (/\.(tsx|jsx)$/.test(entry.name)) {
+      results.push(path.join(dir, entry.name));
+    }
+  }
+  return results;
+}
+
+/** Run the prohibited-pattern audit on all React files under localPath. */
+async function runLocalScan(localPath: string): Promise<void> {
+  loadEnvFile();
+  const config = loadConfig();
+
+  // ── Check token file exists ────────────────────────────────────────────────
+  const tokenFilePath = path.resolve(process.cwd(), config.tokens.file);
+  if (!fs.existsSync(tokenFilePath)) {
+    console.error(
+      `\n  ${C.yellow}No token file found at ${config.tokens.file}${C.reset}\n` +
+      `  Run "fixel import --file FILEKEY --write" to generate it.\n`,
+    );
+    process.exit(1);
+  }
+
+  // ── Locate files ───────────────────────────────────────────────────────────
+  const scanRoot = path.resolve(process.cwd(), localPath);
+  if (!fs.existsSync(scanRoot)) {
+    console.error(`\n  ${C.red}Path not found:${C.reset} ${localPath}\n`);
+    process.exit(1);
+  }
+
+  const files = collectReactFiles(scanRoot);
+
+  console.log(`\n${C.bold}  fixel scan${C.reset}  ${C.dim}local${C.reset}`);
+  console.log(`  Path:      ${localPath}`);
+  console.log(`  Framework: ${config.framework}`);
+  console.log(`  Tokens:    ${config.tokens.file}`);
+
+  if (files.length === 0) {
+    console.log(`\n  ${C.yellow}No .tsx / .jsx files found under ${localPath}${C.reset}\n`);
+    process.exit(0);
+  }
+
+  console.log(`  Files:     ${files.length}\n`);
+
+  // ── Audit each file ────────────────────────────────────────────────────────
+  let totalViolations = 0;
+  let filesWithErrors = 0;
+
+  for (const file of files) {
+    let code: string;
+    try {
+      code = fs.readFileSync(file, 'utf8');
+    } catch {
+      console.warn(`  ${C.yellow}⚠${C.reset}  Could not read ${path.relative(process.cwd(), file)} — skipped`);
+      continue;
+    }
+
+    const violations = auditCode(code, config);
+    if (violations.length === 0) continue;
+
+    const rel       = path.relative(process.cwd(), file);
+    const hasErrors = violations.some((v: AuditViolation) => v.severity === 'error');
+    if (hasErrors) filesWithErrors++;
+    totalViolations += violations.length;
+
+    console.log(`  ${C.bold}${rel}${C.reset}`);
+    for (const v of violations) {
+      const icon =
+        v.severity === 'error'
+          ? `${C.red}✗${C.reset}`
+          : `${C.yellow}⚠${C.reset}`;
+      console.log(`    ${icon}  line ${v.line}:${v.column}  ${C.dim}[${v.pattern}]${C.reset}`);
+      console.log(`       ${v.snippet}`);
+      // Print only the first line of the suggestion to keep output compact
+      const firstLine = v.suggestion.split('\n')[0];
+      console.log(`       ${C.dim}${firstLine}${C.reset}`);
+    }
+    console.log('');
+  }
+
+  // ── Summary ────────────────────────────────────────────────────────────────
+  if (totalViolations === 0) {
+    console.log(`  ${C.green}${C.bold}✓ No prohibited patterns found across ${files.length} file(s).${C.reset}\n`);
+    process.exit(0);
+  }
+
+  const errorWord  = filesWithErrors === 1 ? 'file' : 'files';
+  const violWord   = totalViolations === 1  ? 'violation' : 'violations';
+  console.log(
+    `  ${C.red}${C.bold}${totalViolations} ${violWord} in ${filesWithErrors} ${errorWord}.${C.reset}` +
+    `  ${C.dim}Fix errors before committing.${C.reset}\n`,
+  );
+  process.exit(1);
+}
+
+// ─── Figma-mode report printer ────────────────────────────────────────────────
 
 function printReport(
   suggestions:    TokenSuggestion[],
@@ -193,23 +350,19 @@ function printReport(
   }
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+// ─── Figma-mode main ──────────────────────────────────────────────────────────
 
-async function main(): Promise<void> {
-  const args   = parseArgs(process.argv.slice(2));
-  const parsed = parseNodeArg(args.nodeRaw);
+async function runFigmaScan(args: ScanArgs): Promise<void> {
+  const parsed = parseNodeArg(args.nodeRaw!);
 
   console.log(`\n${C.bold}  fixel scan${C.reset}`);
   console.log(`  Figma node:  ${args.nodeRaw}`);
   console.log(`  Token group: ${args.group}\n`);
 
-  // ── Load config ────────────────────────────────────────────────────────────
   loadEnvFile();
   const config = loadConfig();
-
   const figmaToken = resolveFigmaToken(config);
 
-  // ── Fetch Figma node ───────────────────────────────────────────────────────
   console.log('  Fetching Figma design data…');
   const rawNode = await fetchFigmaNode({
     accessToken: figmaToken,
@@ -222,7 +375,6 @@ async function main(): Promise<void> {
   const node = findComponentRoot(rawNode);
   console.log(`  Node: ${node.name} (${node.type})\n`);
 
-  // ── Extract fills ──────────────────────────────────────────────────────────
   const fills = extractFills(node as unknown as Record<string, unknown>);
 
   if (fills.size === 0) {
@@ -231,18 +383,15 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // ── Compare against token file ─────────────────────────────────────────────
   const tokenSource = readTokenFile(config);
   const tokenIndex  = buildTokenIndex(tokenSource, config);
   const classified  = classifyFills(fills, tokenIndex);
   const suggestions = buildSuggestions(classified, fills, args.group, config);
   const patch       = formatTokenPatch(suggestions, args.group, config);
 
-  // ── Print report ───────────────────────────────────────────────────────────
   printReport(suggestions, args.group, patch);
 
-  // ── Next steps ─────────────────────────────────────────────────────────────
-  const hasNew     = suggestions.some((s) => s.status === 'new');
+  const hasNew      = suggestions.some((s) => s.status === 'new');
   const hasPrimOnly = suggestions.some((s) => s.status === 'primitiveOnly');
 
   if (!hasNew && !hasPrimOnly) {
@@ -258,7 +407,6 @@ async function main(): Promise<void> {
     console.log(`       ${C.cyan}fixel generate --name <Component> --node ${args.nodeRaw}${C.reset}\n`);
   }
 
-  // ── Optional: write suggestions JSON ──────────────────────────────────────
   if (args.write) {
     const outPath = path.resolve(process.cwd(), '.fixel-scan.json');
     const payload = {
@@ -270,6 +418,21 @@ async function main(): Promise<void> {
     fs.writeFileSync(outPath, JSON.stringify(payload, null, 2) + '\n', 'utf8');
     console.log(`  ${C.green}✓${C.reset}  Suggestions written to .fixel-scan.json\n`);
   }
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
+
+async function main(): Promise<void> {
+  // process.argv: [node, fixel-bin.js, 'scan', ...rest]
+  // slice(3) skips the 'scan' command word so parseArgs only sees the real arguments.
+  const args = parseArgs(process.argv.slice(3));
+
+  if (args.mode === 'local') {
+    await runLocalScan(args.localPath!);
+    return;
+  }
+
+  await runFigmaScan(args);
 }
 
 // ─── Entry ────────────────────────────────────────────────────────────────────

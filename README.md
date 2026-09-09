@@ -1,7 +1,7 @@
 # Fixel
 
-The complete Figma-to-React pipeline — generate components from Figma,
-enforce design parity in CI, and close the loop back to designers.
+CI guard for AI-generated React — token-level drift detection against Figma,
+prohibited-pattern enforcement, and findings posted back to the design canvas.
 
 [![npm](https://img.shields.io/npm/v/fixel)](https://www.npmjs.com/package/fixel)
 [![npm downloads](https://img.shields.io/npm/dw/fixel)](https://www.npmjs.com/package/fixel)
@@ -20,36 +20,37 @@ Fixel's core bet: hallucination in code generation is an architecture
 problem, not a prompting problem. Constrain what the model is allowed to
 guess about, then verify the rest continuously.
 
-**1. Deterministic extraction before generation.**
-Fixel fetches the Figma node and extracts every color, spacing value,
-typography pairing, and border radius algorithmically before the LLM sees
-anything. Colors resolve to semantic tokens from your token file. Font size
-and weight pairs resolve to token names from your configured scale. The LLM
-never gets to guess about values that have definitive answers.
+**1. Prohibited-pattern enforcement.**
+`fixel scan ./src` walks your React components and flags raw hex literals,
+bare numeric border-radius in MUI sx, and rgb/rgba calls — anything that
+bypasses your token system. No Figma call, no API key. Exits 1 in CI.
 
-**2. Constrained generation.**
-The LLM receives pre-resolved design values, your token file, and your
-framework's encoding rules. Its job is structure and composition — not
-arithmetic on hex codes or scale lookups.
+**2. Continuous drift detection.**
+`fixel verify` reads the spec locked at generation time and checks whether the
+current source still matches the Figma values. It exits 1 on drift. Add it to
+your CI check and it runs offline — no Figma token needed.
 
-**3. Prohibited-pattern enforcement before any file is written.**
-Generated code is audited before being committed to disk. Raw hex values,
-bare numeric border radii (MUI's sx multiplies these by 4), template-literal
-color interpolation in Tailwind className strings — any of these abort
-generation with a specific error and fix instruction.
+**3. Findings back to the canvas.**
+`fixel annotate` posts drift findings as anchored comments on the Figma frame,
+deduplicating via `resolved_at` so a resolved comment does not repost until
+drift recurs.
 
-**4. Continuous drift detection in CI.**
-`fixel verify` reads the spec locked at generation time and checks whether
-the current source still matches the Figma values. It exits 1 on drift.
-`fixel annotate` posts findings back to the Figma canvas as anchored
-comments, deduplicating via `resolved_at` so a resolved comment does not
-repost until drift recurs.
+**4. Deterministic extraction + constrained generation.**
+`fixel generate` fetches the Figma node, resolves every colour and spacing
+value to a semantic token before the LLM sees it, and audits the output before
+writing any file. The model handles structure; Fixel handles the values.
 
 ## Quickstart
 
 ```sh
-npm install -g fixel
-# or, without installing globally:
+npx fixel scan ./src
+```
+
+No config needed for local scan — if `fixel.config.json` is present, fixel
+reads your framework and token settings from it. For the full pipeline
+(import → generate → verify → annotate), start with:
+
+```sh
 npx fixel init
 ```
 
@@ -59,12 +60,41 @@ elevated prompt, or use `npx fixel <command>` throughout.
 
 | Command | What it does |
 |---------|-------------|
-| `fixel import` | Read Figma published styles → write token file + typography config |
-| `fixel init` | Interactive project setup → write `fixel.config.json` |
-| `fixel scan` | Token gap analysis for a Figma node before generating |
-| `fixel generate` | Generate a component, stories, and spec tests from a Figma node |
+| `fixel scan <path>` | Audit React files for prohibited patterns — no Figma call |
 | `fixel verify` | Drift detection — offline, fast, exits 1 on mismatch |
 | `fixel annotate` | Post drift findings as anchored comments on the Figma frame |
+| `fixel import` | Read Figma published styles → write token file + typography config |
+| `fixel init` | Interactive project setup → write `fixel.config.json` |
+| `fixel scan --node FILEKEY:NODEID` | Token gap analysis for a Figma node before generating |
+| `fixel generate` | Generate a component, stories, and spec tests from a Figma node |
+
+## MCP server
+
+Fixel ships a Model Context Protocol server so AI coding agents can run
+verification directly.
+
+Add to your MCP host config (e.g. Claude Desktop's `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "fixel": {
+      "command": "fixel-mcp",
+      "env": {
+        "FIGMA_ACCESS_TOKEN": "your_figma_pat"
+      }
+    }
+  }
+}
+```
+
+Tools exposed:
+
+| Tool | Description |
+|------|-------------|
+| `fixel_scan(path)` | Audit local React files — same as `fixel scan <path>` |
+| `fixel_verify(component?, node?)` | Drift detection against stored spec |
+| `fixel_annotate(component, node)` | Post findings to Figma canvas |
 
 ## Prerequisites
 
@@ -75,8 +105,8 @@ elevated prompt, or use `npx fixel <command>` throughout.
 
 | Scope | Required for |
 |-------|-------------|
-| Read file contents | All commands |
-| Read metadata | All commands |
+| Read file contents | All commands except `fixel scan <path>` and `fixel verify` |
+| Read metadata | All commands except `fixel scan <path>` and `fixel verify` |
 | Create, modify, delete comments | `fixel annotate` only |
 
 **AI API key** — for `fixel generate` only; all other commands work without
@@ -95,6 +125,51 @@ ANTHROPIC_API_KEY=your_anthropic_key   # or OPENAI_API_KEY
 ```
 
 ## Commands
+
+### `fixel scan`
+
+Two modes:
+
+**Local mode** — `fixel scan <path>`
+
+Walks all `.tsx` and `.jsx` files under `<path>` and checks each one for
+prohibited design patterns. Reads framework and token settings from
+`fixel.config.json`; if no config is found, falls back to built-in defaults.
+
+Checks run:
+
+| Pattern | What it catches |
+|---------|----------------|
+| `raw-hex` | `'#1a73e8'` or any hex literal inside a string |
+| `raw-rgba` | `rgba(...)` or `rgb(...)` calls in component code |
+| `bare-border-radius` | `borderRadius: 6` in MUI sx (renders as 24px, not 6px) |
+| `tailwind-raw-hex-arbitrary` | `className="bg-[#1a73e8]"` — hex inside Tailwind brackets |
+| `tailwind-raw-rgb-arbitrary` | `className="bg-[rgba(0,0,0,0.5)]"` — rgb inside Tailwind brackets |
+
+```sh
+fixel scan ./src
+fixel scan ./src/components/Badge
+```
+
+Exit codes: `0` clean · `1` violations found or fatal error
+
+**Figma mode** — `fixel scan --node FILEKEY:NODEID`
+
+Token gap analysis. Fetches a Figma node, classifies each unique fill as
+reachable, primitive-only, or new, and prints a ready-to-paste token patch
+for anything not yet covered. Always exits 0 — missing tokens are a report,
+not a failure.
+
+```sh
+fixel scan --node FILEKEY:NODEID
+fixel scan --node FILEKEY:NODEID --group badge
+fixel scan --node FILEKEY:NODEID --group badge --write
+```
+
+The `FILEKEY` and `NODEID` come from the Figma URL:
+`https://www.figma.com/file/FILEKEY/...?node-id=NODEID`
+
+Exit codes: `0` always (run before `fixel generate`) · `1` fatal error only
 
 ### `fixel import`
 
@@ -123,22 +198,6 @@ dependencies. Safe to re-run.
 fixel init
 fixel init --yes   # accept all defaults
 ```
-
-### `fixel scan`
-
-Token gap analysis. Fetches a Figma node, classifies each unique fill as
-reachable, primitive-only, or new, and prints a ready-to-paste token patch
-for anything not yet covered. Always exits 0 — missing tokens are a report,
-not a failure.
-
-```sh
-fixel scan --node FILEKEY:NODEID
-fixel scan --node FILEKEY:NODEID --group badge
-fixel scan --node FILEKEY:NODEID --group badge --write
-```
-
-The `FILEKEY` and `NODEID` come from the Figma URL:
-`https://www.figma.com/file/FILEKEY/...?node-id=NODEID`
 
 ### `fixel generate`
 
@@ -219,11 +278,12 @@ jobs:
           node-version: 18
           cache: npm
       - run: npm ci
-      - run: npx fixel verify
+      - run: npx fixel scan ./src      # prohibited patterns — no token needed
+      - run: npx fixel verify          # drift detection — no token needed
 ```
 
 Exit codes propagate correctly — `1` fails the check, `2` exits cleanly
-when no specs exist yet. No Figma token needed.
+when no specs exist yet. No Figma token needed for either step.
 
 To post findings to the Figma canvas on drift:
 
@@ -273,10 +333,10 @@ not publicly available. Publishing a style library requires a paid Figma plan
 — free-plan users can manually edit `tokens.ts` with their color values as a
 workaround.
 
-**Instance node colors not collected** — `fixel scan` and `fixel import` do
-not traverse Figma component instances (INSTANCE nodes). Colors defined inside
-nested sub-components are not collected. Add these tokens manually to
-`tokens.ts`, then re-run `fixel scan` to confirm coverage.
+**Instance node colors not collected** — `fixel scan --node` and `fixel import`
+do not traverse Figma component instances (INSTANCE nodes). Colors defined
+inside nested sub-components are not collected. Add these tokens manually to
+`tokens.ts`, then re-run `fixel scan --node` to confirm coverage.
 
 **MUI and Tailwind only** — other frameworks receive generic rules with
 limited accuracy.

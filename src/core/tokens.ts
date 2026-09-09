@@ -454,6 +454,117 @@ export function formatTokenPatch(
   return lines.join('\n');
 }
 
+// ─── Colour approximation ─────────────────────────────────────────────────────
+
+/**
+ * A Figma fill colour that had no exact token match but is close enough to a
+ * reachable token that the LLM is likely to use that token as an approximation.
+ */
+export interface ApproximatedToken {
+  /** The fill colour from Figma (uppercase hex, e.g. "#2463EB"). */
+  inputHex:  string;
+  /** Dotted path of the nearest reachable token (e.g. "semantic.button.bg"). */
+  tokenName: string;
+  /** Hex value of the nearest reachable token. */
+  tokenHex:  string;
+}
+
+/** Parse a 6-digit hex string (with or without leading #) into [R, G, B]. */
+function hexToRgb(hex: string): [number, number, number] | null {
+  const clean = hex.replace('#', '');
+  if (clean.length < 6) return null;
+  const r = parseInt(clean.slice(0, 2), 16);
+  const g = parseInt(clean.slice(2, 4), 16);
+  const b = parseInt(clean.slice(4, 6), 16);
+  return isNaN(r) || isNaN(g) || isNaN(b) ? null : [r, g, b];
+}
+
+/** Euclidean distance in RGB space. Max ≈ 441.7. */
+function colorDistance(a: [number, number, number], b: [number, number, number]): number {
+  return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
+}
+
+/**
+ * Maximum RGB Euclidean distance to treat as "approximated" rather than
+ * "unrelated". A value of 30 covers typical ±1-palette-step variations
+ * (~12% shift on one channel) while avoiding false positives between
+ * visually distinct colours.
+ */
+const APPROX_THRESHOLD = 30;
+
+/**
+ * Builds a flat hex → token-name map from the token source file.
+ * Only the first occurrence of each hex value is recorded.
+ *
+ * This is intentionally simple: it matches `key: '#hex'` pairs using a
+ * regex, which works for the standard `export const semantic = { ... }`
+ * format that fixel generates and imports.
+ */
+function buildHexToNameMap(source: string, config: ResolvedConfig): Map<string, string> {
+  const map = new Map<string, string>();
+  const re  = /(\w[\w.]*)\s*:\s*['"]#([0-9a-fA-F]{3,8})['"]/g;
+  for (const m of source.matchAll(re)) {
+    const hex = `#${m[2].toUpperCase()}`;
+    if (!map.has(hex)) {
+      map.set(hex, `${config.tokens.semanticExport}.${m[1]}`);
+    }
+  }
+  return map;
+}
+
+/**
+ * For each Figma fill that has no exact match in the token index, finds the
+ * nearest reachable token by RGB Euclidean distance.  Only returns tokens
+ * within APPROX_THRESHOLD distance — values further apart are treated as
+ * genuinely missing, not approximated.
+ *
+ * Used by `fixel generate` to warn that the AI may silently substitute a
+ * nearby token for an unmatched fill colour, producing code that compiles
+ * but doesn't match the design.
+ */
+export function findApproximatedTokens(
+  fills:       Map<string, FillOccurrence>,
+  tokenIndex:  TokenIndex,
+  tokenSource: string,
+  config:      ResolvedConfig,
+): ApproximatedToken[] {
+  if (tokenIndex.reachable.size === 0) return [];
+
+  const hexToName     = buildHexToNameMap(tokenSource, config);
+  const reachableList = Array.from(tokenIndex.reachable);
+  const results: ApproximatedToken[] = [];
+
+  for (const fillHex of fills.keys()) {
+    if (tokenIndex.reachable.has(fillHex)) continue;  // exact match — not an approximation
+
+    const fillRgb = hexToRgb(fillHex);
+    if (!fillRgb) continue;
+
+    let nearestHex  = '';
+    let nearestDist = Infinity;
+
+    for (const tokenHex of reachableList) {
+      const tokenRgb = hexToRgb(tokenHex);
+      if (!tokenRgb) continue;
+      const dist = colorDistance(fillRgb, tokenRgb);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        nearestHex  = tokenHex;
+      }
+    }
+
+    if (nearestHex && nearestDist <= APPROX_THRESHOLD) {
+      results.push({
+        inputHex:  fillHex,
+        tokenName: hexToName.get(nearestHex) ?? nearestHex,
+        tokenHex:  nearestHex,
+      });
+    }
+  }
+
+  return results;
+}
+
 // ─── Private helpers ──────────────────────────────────────────────────────────
 
 /**
