@@ -8,9 +8,10 @@
  * explicitly documented as passing tests so regressions are visible.
  */
 
-import * as os   from 'node:os';
-import * as fs   from 'node:fs';
-import * as path from 'node:path';
+import * as os              from 'node:os';
+import * as fs              from 'node:fs';
+import * as path            from 'node:path';
+import { spawnSync }        from 'node:child_process';
 
 import { auditCode }         from '../../core/audit';
 import { collectReactFiles } from '../scan';
@@ -307,5 +308,69 @@ describe('AuditViolation shape', () => {
     expect(typeof v.column).toBe('number');
     expect(typeof v.snippet).toBe('string');
     expect(typeof v.suggestion).toBe('string');
+  });
+});
+
+// ─── CLI dispatch regression ──────────────────────────────────────────────────
+//
+// 0.2.3 introduced a `require.main === module` guard in scan.ts so tests could
+// import collectReactFiles.  The bug: index.ts loads scan via
+// `require('./cli/scan')`, which sets require.main to index.js — so the guard
+// fired and main() was never called.  scan produced zero output, exit 0.
+//
+// Fix (0.2.4): export runScanCli() and have index.ts call it explicitly.
+// These tests ensure that class of bug cannot silently regress again.
+
+describe('CLI dispatch — regression for 0.2.3 require.main bug', () => {
+  const ROOT       = path.resolve(__dirname, '..', '..', '..');
+  const DIST_INDEX = path.join(ROOT, 'dist', 'index.js');
+
+  // ── Tier 1: unit — export shape (works without a built dist) ──────────────
+
+  it('scan module exports runScanCli (required by index.ts dispatch path)', () => {
+    // When index.ts does require('./cli/scan'), it must be able to call
+    // runScanCli().  If this export is missing the dispatch is silently broken.
+    // ts-jest requires the TypeScript source directly, same require() semantic.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const scanModule = require('../scan') as Record<string, unknown>;
+    expect(typeof scanModule.runScanCli).toBe('function');
+    expect(typeof scanModule.collectReactFiles).toBe('function');
+  });
+
+  // ── Tier 2: integration — live dispatch (requires built dist) ─────────────
+  //
+  // This is the real smoke test: spawns dist/index.js the same way that
+  // fixel-bin.js does and the MCP server does, and asserts non-empty output.
+  // Skipped when dist/ hasn't been built yet (run `npm run build` first).
+
+  it('fixel scan produces output via dist/index.js dispatch (0.2.3 regression guard)', () => {
+    if (!fs.existsSync(DIST_INDEX)) {
+      console.warn('[skip] dist/index.js not found — run npm run build first');
+      return;
+    }
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fixel-dispatch-'));
+    try {
+      fs.writeFileSync(path.join(tmpDir, 'Clean.tsx'), 'const x = 1;');
+
+      const result = spawnSync(
+        process.execPath,
+        [DIST_INDEX, 'scan', tmpDir],
+        {
+          encoding:  'utf8',
+          timeout:   30_000,
+          cwd:       tmpDir,
+          env:       { ...process.env, NO_COLOR: '1', FORCE_COLOR: '0' },
+        },
+      );
+
+      // Regression symptom: stdout === '' and stderr === '' with exit code 0.
+      // Any output proves that runScanCli() was reached via the dispatch path.
+      const combined = ((result.stdout ?? '') + (result.stderr ?? '')).trim();
+      expect(result.signal).toBeNull();         // was not killed by timeout
+      expect(combined.length).toBeGreaterThan(0); // output must be non-empty
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

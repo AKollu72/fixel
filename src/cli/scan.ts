@@ -521,22 +521,37 @@ async function main(): Promise<void> {
 }
 
 // ─── Entry ────────────────────────────────────────────────────────────────────
-// Guard so tests can import collectReactFiles without triggering the CLI.
 
-if (require.main === module) {
+/**
+ * Run the scan CLI.  Exported so index.ts can call it explicitly after
+ * `require('./cli/scan')` — this is what allows tests to import
+ * `collectReactFiles` without triggering the CLI as a side effect.
+ *
+ * The 0.2.3 regression used `if (require.main === module)` at the TOP LEVEL,
+ * which meant index.ts's `require('./cli/scan')` dispatch never called main().
+ * The fix: export the runner and have index.ts call it explicitly.
+ */
+export function runScanCli(): void {
   main().catch((err: unknown) => {
-  if (err instanceof FixelConfigError) {
-    console.error(`\n  ${C.yellow}Config error:${C.reset} ${err.message}\n`);
-    process.exit(1);
-  }
-  if (err instanceof FigmaApiError) {
-    console.error(`\n  ${C.red}Figma API error:${C.reset} ${err.message}\n`);
-    if (err.statusCode === 403) {
-      console.error(`  Check that FIGMA_ACCESS_TOKEN is set and has read access to this file.\n`);
+    if (err instanceof FixelConfigError) {
+      console.error(`\n  ${C.yellow}Config error:${C.reset} ${err.message}\n`);
+      process.exit(1);
     }
+    if (err instanceof FigmaApiError) {
+      console.error(`\n  ${C.red}Figma API error:${C.reset} ${err.message}\n`);
+      if (err.statusCode === 403) {
+        console.error(`  Check that FIGMA_ACCESS_TOKEN is set and has read access to this file.\n`);
+      }
+      process.exit(1);
+    }
+    console.error(`\n  ${C.red}Error:${C.reset} ${err instanceof Error ? err.message : String(err)}\n`);
     process.exit(1);
-  }
-  console.error(`\n  ${C.red}Error:${C.reset} ${err instanceof Error ? err.message : String(err)}\n`);
-  process.exit(1);
   });
+}
+
+// Auto-run only when invoked directly (node dist/cli/scan.js).
+// The normal dispatch path — index.ts → require('./cli/scan') → runScanCli() —
+// does NOT go through this branch.
+if (require.main === module) {
+  runScanCli();
 }

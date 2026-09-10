@@ -30,7 +30,11 @@ switch (command) {
     break;
 
   case 'scan':
-    require('./cli/scan');
+    // Explicit call — do NOT rely on side-effectful require here.
+    // scan.ts exports runScanCli() so tests can also import collectReactFiles
+    // without triggering the CLI.  See 0.2.4 fix notes.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    (require('./cli/scan') as { runScanCli: () => void }).runScanCli();
     break;
 
   case 'generate':

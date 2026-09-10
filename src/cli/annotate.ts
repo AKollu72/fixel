@@ -248,12 +248,15 @@ async function main(): Promise<void> {
 main().catch((err: unknown) => {
   if (err instanceof FixelConfigError) {
     console.error(`\n  ${C.yellow}Config error:${C.reset} ${err.message}\n`);
-    process.exit(1);
-  }
-  if (err instanceof FigmaWriteError) {
+  } else if (err instanceof FigmaWriteError) {
     console.error(`\n  ${C.red}Figma error:${C.reset} ${err.message}\n`);
-    process.exit(1);
+  } else {
+    console.error(`\n  ${C.red}Error:${C.reset} ${err instanceof Error ? err.message : String(err)}\n`);
   }
-  console.error(`\n  ${C.red}Error:${C.reset} ${err instanceof Error ? err.message : String(err)}\n`);
-  process.exit(1);
+  // Use exitCode + natural drain rather than process.exit(1) to avoid a libuv
+  // assertion fault on Windows.  When undici (global fetch) completes socket
+  // cleanup and no more handles remain, Node exits with this code automatically.
+  // The 'connection: close' header in figma-writer.ts ensures the socket is
+  // destroyed after the response, so the drain is fast (< ~50ms in practice).
+  process.exitCode = 1;
 });

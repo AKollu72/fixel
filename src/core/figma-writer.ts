@@ -123,7 +123,10 @@ export async function postComment(opts: PostCommentOptions): Promise<PostComment
     try {
       res = await fetch(url, {
         method:  'POST',
-        headers: authHeaders(opts.accessToken),
+        // 'connection: close' prevents undici from pooling this socket.
+        // Without it, the keep-alive handle triggers a libuv assertion on
+        // Windows when process.exit() fires before the pool drains.
+        headers: { ...authHeaders(opts.accessToken), connection: 'close' },
         body:    JSON.stringify(payload),
       });
     } catch (err) {
@@ -189,7 +192,8 @@ export async function listComments(fileKey: string, accessToken: string): Promis
   for (let attempt = 0; attempt <= 1; attempt++) {
     try {
       res = await fetch(url, {
-        headers: { 'X-Figma-Token': accessToken },
+        // 'connection: close' — see postComment for the Windows rationale.
+        headers: { 'X-Figma-Token': accessToken, connection: 'close' },
       });
     } catch (err) {
       throw new FigmaWriteError(

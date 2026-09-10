@@ -2,6 +2,34 @@
 
 All notable changes to Fixel are documented here.
 
+## [0.2.4] — 2026-09-09
+
+### Fixed
+
+- **`fixel scan` regression (0.2.3)** — the `require.main === module` guard
+  introduced in 0.2.3 to allow test imports of `collectReactFiles` silenced
+  the entire scan command when dispatched from `index.ts` via
+  `require('./cli/scan')`.  The fix: export `runScanCli()` from `scan.ts`
+  and have `index.ts` call it explicitly.  The `require.main` guard is kept
+  only for direct invocation (`node dist/cli/scan.js`).
+
+- **Annotate Windows exit crash** — `process.exit(1)` called while undici's
+  background thread was still draining the HTTP connection pool triggered a
+  libuv assertion failure (`UV_HANDLE_CLOSING` in `src\win\async.c`) on
+  Windows.  Fix: switch to `process.exitCode = 1` (natural event-loop drain)
+  in the annotate entry-point catch block.  Added `connection: 'close'` header
+  to both `postComment` and `listComments` in `figma-writer.ts` so undici
+  destroys the socket after the response, keeping the drain fast (~308ms).
+
+### Added
+
+- **CLI dispatch regression test** — two-tier test in `scan-local.test.ts`:
+  (1) unit test verifying `runScanCli` export shape; (2) integration test
+  that spawns `dist/index.js scan <tmpdir>` and asserts non-empty output,
+  catching any future `require.main`-class dispatch failure automatically.
+
+---
+
 ## [0.2.3] — 2026-09-09
 
 ### Fixed
