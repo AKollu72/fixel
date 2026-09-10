@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    name: Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [18, 20]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+  dogfood:
+    # Fixel scans its own CLI source — the dispatch code that should
+    # never contain design values. Scoped to src/cli; src/prompts and
+    # src/core/audit.ts contain instructional strings about the patterns,
+    # not actual design values (scanning them would be like spellchecking
+    # a dictionary).
+    name: Fixel scans itself
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: fixel scan ./src/cli
+        run: node fixel-bin.js scan ./src/cli

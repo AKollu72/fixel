@@ -2,6 +2,7 @@
 
 If you generate React from Figma with AI, Fixel locks the exact design values and fails CI when they drift.
 
+[![CI](https://github.com/AKollu72/fixel/actions/workflows/ci.yml/badge.svg)](https://github.com/AKollu72/fixel/actions/workflows/ci.yml)
 [![npm](https://img.shields.io/npm/v/fixel)](https://www.npmjs.com/package/fixel)
 [![npm downloads](https://img.shields.io/npm/dw/fixel)](https://www.npmjs.com/package/fixel)
 
