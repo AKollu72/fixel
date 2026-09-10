@@ -2,6 +2,23 @@
 
 All notable changes to Fixel are documented here.
 
+## [0.2.5] — 2026-09-09
+
+### Changed
+
+- **README** — replaced tagline with canonical niche sentence; added "Try it in
+  10 seconds" and "Give it to your coding agent" entry doors at the top;
+  merged the former standalone MCP section into the top entry door (no
+  content removed, no duplication).
+- **`package.json` description** — updated to match the canonical niche
+  sentence.
+- **`CONTRIBUTING.md`** — removed stale `# or OPENAI_API_KEY` comment;
+  OpenAI support was dropped in 0.2.1.
+- **Launch materials** — rewrote `launch/show-hn.md`; added
+  `launch/linkedin-post.md`.
+
+---
+
 ## [0.2.4] — 2026-09-09
 
 ### Fixed

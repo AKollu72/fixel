@@ -1,10 +1,47 @@
 # Fixel
 
-CI guard for AI-generated React — token-level drift detection against Figma,
-prohibited-pattern enforcement, and findings posted back to the design canvas.
+If you generate React from Figma with AI, Fixel locks the exact design values and fails CI when they drift.
 
 [![npm](https://img.shields.io/npm/v/fixel)](https://www.npmjs.com/package/fixel)
 [![npm downloads](https://img.shields.io/npm/dw/fixel)](https://www.npmjs.com/package/fixel)
+
+### Try it in 10 seconds (humans)
+
+```sh
+npx fixel scan ./src
+```
+
+No config, no API key, no Figma account needed. Exits 1 in CI.
+
+### Give it to your coding agent (MCP)
+
+```sh
+claude mcp add fixel -- npx fixel-mcp
+```
+
+Or add to your `mcpServers` config (Cursor, Windsurf, etc.):
+
+```json
+{
+  "mcpServers": {
+    "fixel": {
+      "command": "npx",
+      "args": ["fixel-mcp"]
+    }
+  }
+}
+```
+
+Three tools your agent can call immediately after generating a component:
+
+| Tool | What it does |
+|------|-------------|
+| `fixel_scan(path)` | Audit files for prohibited patterns — same as `fixel scan` |
+| `fixel_verify(component?, node?)` | Drift detection against the stored Figma spec |
+| `fixel_annotate(component, node)` | Post findings to the Figma frame |
+
+Your agent can verify its own generated components before you ever review them.
+Tested with Claude Code as the MCP host.
 
 ## The problem
 
@@ -67,34 +104,6 @@ elevated prompt, or use `npx fixel <command>` throughout.
 | `fixel init` | Interactive project setup → write `fixel.config.json` |
 | `fixel scan --node FILEKEY:NODEID` | Token gap analysis for a Figma node before generating |
 | `fixel generate` | Generate a component, stories, and spec tests from a Figma node |
-
-## MCP server
-
-Fixel ships a Model Context Protocol server so AI coding agents can run
-verification directly.
-
-Add to your MCP host config (e.g. Claude Desktop's `claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "fixel": {
-      "command": "fixel-mcp",
-      "env": {
-        "FIGMA_ACCESS_TOKEN": "your_figma_pat"
-      }
-    }
-  }
-}
-```
-
-Tools exposed:
-
-| Tool | Description |
-|------|-------------|
-| `fixel_scan(path)` | Audit local React files — same as `fixel scan <path>` |
-| `fixel_verify(component?, node?)` | Drift detection against stored spec |
-| `fixel_annotate(component, node)` | Post findings to Figma canvas |
 
 ## Prerequisites
 

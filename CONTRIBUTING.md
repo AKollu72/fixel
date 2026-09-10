@@ -14,7 +14,7 @@ Create `.env.local` in the repo root with your credentials:
 
 ```sh
 FIGMA_ACCESS_TOKEN=your_figma_pat
-ANTHROPIC_API_KEY=your_anthropic_key   # or OPENAI_API_KEY
+ANTHROPIC_API_KEY=your_anthropic_key
 ```
 
 These are never committed — `.env.local` is in `.gitignore`.

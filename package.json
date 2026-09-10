@@ -1,7 +1,7 @@
 {
   "name": "fixel",
-  "version": "0.2.4",
-  "description": "CI guard for AI-generated React — token-level drift detection against Figma, prohibited-pattern enforcement, and findings posted back to the design canvas.",
+  "version": "0.2.5",
+  "description": "If you generate React from Figma with AI, Fixel locks the exact design values and fails CI when they drift.",
   "license": "FSL-1.1-MIT",
   "author": "Amrutha Kollu",
   "repository": {
