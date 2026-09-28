@@ -1,0 +1,36 @@
+{
+  "name": "fixel-mcp",
+  "version": "0.1.0",
+  "description": "MCP server launcher for Fixel — lets AI coding agents call fixel_scan, fixel_verify, and fixel_annotate over the Model Context Protocol.",
+  "license": "FSL-1.1-MIT",
+  "author": "Amrutha Kollu",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AKollu72/fixel.git",
+    "directory": "packages/fixel-mcp"
+  },
+  "homepage": "https://github.com/AKollu72/fixel",
+  "keywords": [
+    "figma",
+    "design-tokens",
+    "design-system",
+    "react",
+    "mcp",
+    "ai-codegen",
+    "drift-detection",
+    "ci"
+  ],
+  "bin": {
+    "fixel-mcp": "bin.js"
+  },
+  "files": [
+    "bin.js",
+    "README.md"
+  ],
+  "dependencies": {
+    "fixel": "^0.2.5"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
