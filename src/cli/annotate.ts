@@ -58,17 +58,38 @@ import {
   listComments,
 } from '../core/figma-writer';
 
-// ─── ANSI helpers ─────────────────────────────────────────────────────────────
+// ─── ANSI helpers (gated on stdout TTY / NO_COLOR) ───────────────────────────
 
-const C = {
-  reset:  '\x1b[0m',
-  bold:   '\x1b[1m',
-  dim:    '\x1b[2m',
-  green:  '\x1b[32m',
-  yellow: '\x1b[33m',
-  red:    '\x1b[31m',
-  cyan:   '\x1b[36m',
-};
+import { stdoutC } from '../core/color';
+const C = stdoutC();
+
+// ─── Help ─────────────────────────────────────────────────────────────────────
+
+function printAnnotateHelp(): void {
+  console.log(`
+  fixel annotate — post drift findings as a Figma comment
+
+  Usage:
+    fixel annotate --component Badge --node FILEKEY:NODEID
+    fixel annotate --component Badge --node FILEKEY:NODEID --dry-run
+
+  Options:
+    --component <Name>       Component to check (required)
+    --node <FILEKEY:NODEID>  Figma file key + node ID to post on (required)
+    --dry-run                Print the comment text without posting it
+    -h, --help               Show this help
+
+  Prerequisites:
+    FIGMA_ACCESS_TOKEN  set in your environment or .env.local
+                        Requires "Comments → Write" scope on the PAT
+    fixel.config.json   present in the working directory
+    <Component>.fixel.json spec must exist (run \`fixel generate\` first)
+
+  Exit codes:
+    0  comment posted, nothing to post, or --dry-run
+    1  drift check failure or Figma API error
+`);
+}
 
 // ─── CLI args ─────────────────────────────────────────────────────────────────
 
@@ -149,7 +170,12 @@ function formatComment(
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (argv.includes('--help') || argv.includes('-h')) {
+    printAnnotateHelp();
+    process.exit(0);
+  }
+  const args = parseArgs(argv);
 
   loadEnvFile();
   const config    = loadConfig();

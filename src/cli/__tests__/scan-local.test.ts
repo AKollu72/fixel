@@ -311,6 +311,153 @@ describe('AuditViolation shape', () => {
   });
 });
 
+// ─── Fix 1: NO_COLOR / non-TTY strips ANSI codes ─────────────────────────────
+
+describe('CLI output — NO_COLOR strips ANSI codes', () => {
+  const ROOT       = path.resolve(__dirname, '..', '..', '..');
+  const DIST_INDEX = path.join(ROOT, 'dist', 'index.js');
+
+  it('fixel scan produces no ANSI escape sequences when NO_COLOR is set', () => {
+    if (!fs.existsSync(DIST_INDEX)) {
+      console.warn('[skip] dist/index.js not found — run npm run build first');
+      return;
+    }
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fixel-color-'));
+    try {
+      fs.writeFileSync(path.join(tmpDir, 'Clean.tsx'), 'const x = 1;');
+      const result = spawnSync(
+        process.execPath,
+        [DIST_INDEX, 'scan', tmpDir],
+        { encoding: 'utf8', timeout: 30_000, cwd: tmpDir, env: { ...process.env, NO_COLOR: '1' } },
+      );
+      const combined = (result.stdout ?? '') + (result.stderr ?? '');
+      // eslint-disable-next-line no-control-regex
+      expect(combined).not.toMatch(/\x1b\[/);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+// ─── Fix 2: subcommand --help exits 0 (all six subcommands) ──────────────────
+
+describe('CLI --help flags — all subcommands exit 0 without config', () => {
+  const ROOT       = path.resolve(__dirname, '..', '..', '..');
+  const DIST_INDEX = path.join(ROOT, 'dist', 'index.js');
+
+  const subcommands = ['scan', 'verify', 'init', 'generate', 'annotate', 'import'];
+
+  for (const sub of subcommands) {
+    it(`fixel ${sub} --help exits 0 and prints usage`, () => {
+      if (!fs.existsSync(DIST_INDEX)) {
+        console.warn('[skip] dist/index.js not found — run npm run build first');
+        return;
+      }
+      const result = spawnSync(
+        process.execPath,
+        [DIST_INDEX, sub, '--help'],
+        { encoding: 'utf8', timeout: 10_000, env: { ...process.env, NO_COLOR: '1' } },
+      );
+      expect(result.status).toBe(0);
+      expect((result.stdout ?? '') + (result.stderr ?? '')).toMatch(
+        new RegExp(`fixel ${sub}`, 'i'),
+      );
+    });
+  }
+});
+
+// ─── Fix 1 (annotate): non-TTY output contains no ANSI sequences ─────────────
+
+describe('CLI output — annotate non-TTY strips ANSI codes', () => {
+  const ROOT       = path.resolve(__dirname, '..', '..', '..');
+  const DIST_INDEX = path.join(ROOT, 'dist', 'index.js');
+
+  it('fixel annotate (missing args) produces no ANSI escape sequences when NO_COLOR is set', () => {
+    if (!fs.existsSync(DIST_INDEX)) {
+      console.warn('[skip] dist/index.js not found — run npm run build first');
+      return;
+    }
+    const result = spawnSync(
+      process.execPath,
+      [DIST_INDEX, 'annotate'],
+      { encoding: 'utf8', timeout: 10_000, env: { ...process.env, NO_COLOR: '1' } },
+    );
+    const combined = (result.stdout ?? '') + (result.stderr ?? '');
+    // eslint-disable-next-line no-control-regex
+    expect(combined).not.toMatch(/\x1b\[/);
+  });
+});
+
+// ─── Fix 4: single-file scan ─────────────────────────────────────────────────
+
+describe('CLI — single-file scan', () => {
+  const ROOT       = path.resolve(__dirname, '..', '..', '..');
+  const DIST_INDEX = path.join(ROOT, 'dist', 'index.js');
+
+  it('fixel scan <file.tsx> exits 1 and reports violations for a dirty file', () => {
+    if (!fs.existsSync(DIST_INDEX)) {
+      console.warn('[skip] dist/index.js not found — run npm run build first');
+      return;
+    }
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fixel-file-'));
+    try {
+      const filePath = path.join(tmpDir, 'Button.tsx');
+      fs.writeFileSync(filePath, `const c = '#ff0000';`);
+      const result = spawnSync(
+        process.execPath,
+        [DIST_INDEX, 'scan', filePath],
+        { encoding: 'utf8', timeout: 30_000, cwd: tmpDir, env: { ...process.env, NO_COLOR: '1' } },
+      );
+      expect(result.status).toBe(1);
+      expect((result.stdout ?? '') + (result.stderr ?? '')).toMatch(/raw-hex/);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('fixel scan <file.tsx> exits 0 when the file is clean', () => {
+    if (!fs.existsSync(DIST_INDEX)) {
+      console.warn('[skip] dist/index.js not found — run npm run build first');
+      return;
+    }
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fixel-file-'));
+    try {
+      const filePath = path.join(tmpDir, 'Clean.tsx');
+      fs.writeFileSync(filePath, `const x = 1;`);
+      const result = spawnSync(
+        process.execPath,
+        [DIST_INDEX, 'scan', filePath],
+        { encoding: 'utf8', timeout: 30_000, cwd: tmpDir, env: { ...process.env, NO_COLOR: '1' } },
+      );
+      expect(result.status).toBe(0);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('fixel scan <file.png> exits non-zero with unsupported extension message', () => {
+    if (!fs.existsSync(DIST_INDEX)) {
+      console.warn('[skip] dist/index.js not found — run npm run build first');
+      return;
+    }
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'fixel-file-'));
+    try {
+      const filePath = path.join(tmpDir, 'image.png');
+      fs.writeFileSync(filePath, '');
+      const result = spawnSync(
+        process.execPath,
+        [DIST_INDEX, 'scan', filePath],
+        { encoding: 'utf8', timeout: 30_000, cwd: tmpDir, env: { ...process.env, NO_COLOR: '1' } },
+      );
+      expect(result.status).not.toBe(0);
+      expect((result.stdout ?? '') + (result.stderr ?? '')).toMatch(/Unsupported/i);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
 // ─── CLI dispatch regression ──────────────────────────────────────────────────
 //
 // 0.2.3 introduced a `require.main === module` guard in scan.ts so tests could

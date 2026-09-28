@@ -75,17 +75,40 @@ import {
 import { readTokenFile, buildTokenIndex, extractFills, findApproximatedTokens } from '../core/tokens';
 import { buildSystemPrompt } from '../prompts/system-prompt';
 
-// ─── ANSI helpers ─────────────────────────────────────────────────────────────
+// ─── ANSI helpers (gated on stdout TTY / NO_COLOR) ───────────────────────────
 
-const C = {
-  reset:  '\x1b[0m',
-  bold:   '\x1b[1m',
-  dim:    '\x1b[2m',
-  green:  '\x1b[32m',
-  yellow: '\x1b[33m',
-  red:    '\x1b[31m',
-  cyan:   '\x1b[36m',
-};
+import { stdoutC } from '../core/color';
+const C = stdoutC();
+
+// ─── Help ─────────────────────────────────────────────────────────────────────
+
+function printGenerateHelp(): void {
+  console.log(`
+  fixel generate — AI-powered Figma-to-component generator
+
+  Usage:
+    fixel generate --name Badge --node FILEKEY:NODEID
+
+  Options:
+    --name <ComponentName>   PascalCase component name (required)
+    --node <FILEKEY:NODEID>  Figma node to generate from (required)
+    --dry-run                Print output without writing files
+    --force                  Overwrite existing component files
+    --skip-tests             Skip spec-test file generation
+    --figma-depth <N>        Figma API tree depth (default: 6, max: 10)
+    --no-cache               Bypass the Figma API response cache
+    -h, --help               Show this help
+
+  Prerequisites:
+    ANTHROPIC_API_KEY   set in your environment or .env.local
+    FIGMA_ACCESS_TOKEN  set in your environment or .env.local
+    fixel.config.json   present in the working directory (run \`fixel init\` first)
+
+  Exit codes:
+    0  all files written (or dry-run completed)
+    1  audit failed, AI error, config error, or Figma API error
+`);
+}
 
 // ─── CLI args ─────────────────────────────────────────────────────────────────
 
@@ -306,7 +329,12 @@ function trimNode(
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const args   = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (argv.includes('--help') || argv.includes('-h')) {
+    printGenerateHelp();
+    process.exit(0);
+  }
+  const args   = parseArgs(argv);
   const parsed = parseNodeArg(args.nodeRaw);
 
   const totalSteps = args.skipTests ? 7 : 8;
@@ -327,8 +355,8 @@ async function main(): Promise<void> {
   // B4: warn when the typography scale has never been customised
   if (JSON.stringify(scale) === JSON.stringify(createDefaultConfig().typography.scale)) {
     console.warn(
-      `  \x1b[33m⚠\x1b[0m  Your typography scale is still the default — token names may not exist in your project.\n` +
-      `     Edit \x1b[36mfixel.config.json\x1b[0m → \x1b[36mtypography.scale\x1b[0m to match your design system.\n`,
+      `  ${C.yellow}⚠${C.reset}  Your typography scale is still the default — token names may not exist in your project.\n` +
+      `     Edit ${C.cyan}fixel.config.json${C.reset} → ${C.cyan}typography.scale${C.reset} to match your design system.\n`,
     );
   }
 

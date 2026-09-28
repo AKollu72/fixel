@@ -39,17 +39,36 @@ import {
   type ResolvedTextStyle,
 } from '../core/figma-client';
 
-// ─── ANSI helpers ─────────────────────────────────────────────────────────────
+// ─── ANSI helpers (gated on stdout TTY / NO_COLOR) ───────────────────────────
 
-const C = {
-  reset:  '\x1b[0m',
-  bold:   '\x1b[1m',
-  dim:    '\x1b[2m',
-  green:  '\x1b[32m',
-  yellow: '\x1b[33m',
-  red:    '\x1b[31m',
-  cyan:   '\x1b[36m',
-};
+import { stdoutC } from '../core/color';
+const C = stdoutC();
+
+// ─── Help ─────────────────────────────────────────────────────────────────────
+
+function printImportHelp(): void {
+  console.log(`
+  fixel import — generate token files from Figma design system styles
+
+  Usage:
+    fixel import --file FILEKEY           Dry-run: print what would be written
+    fixel import --file FILEKEY --write   Write tokens.ts and merge config
+
+  Options:
+    --file <FILEKEY>   Figma file key (required)
+    --write            Apply changes to disk (tokens.ts and fixel.config.json)
+    --no-cache         Bypass the Figma API response cache
+    -h, --help         Show this help
+
+  Prerequisites:
+    FIGMA_ACCESS_TOKEN  set in your environment or .env.local
+    fixel.config.json   present in the working directory (run \`fixel init\` first)
+
+  Exit codes:
+    0  success (including "no styles found")
+    1  fatal error (Figma API, config, or filesystem error)
+`);
+}
 
 // ─── CLI args ─────────────────────────────────────────────────────────────────
 
@@ -369,7 +388,12 @@ function mergeTypographyIntoConfig(configPath: string, entries: TypographyEntry[
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (argv.includes('--help') || argv.includes('-h')) {
+    printImportHelp();
+    process.exit(0);
+  }
+  const args = parseArgs(argv);
 
   console.log(`\n${C.bold}  fixel import${C.reset}  ${C.dim}${args.fileKey}${C.reset}`);
   if (!args.write) console.log(`  ${C.dim}Dry-run — pass --write to apply changes.${C.reset}`);
