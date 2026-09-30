@@ -2,6 +2,10 @@
 
 All notable changes to Fixel are documented here.
 
+> **Acknowledgments** — thanks to [Stéphane LaFlèche](https://github.com/slafleche)
+> for early testing and detailed feedback in June 2026 that shaped several of
+> the fixes below.
+
 ## [0.2.8] — 2026-09-30
 
 ### Fixed
