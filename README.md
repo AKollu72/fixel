@@ -142,8 +142,8 @@ Two modes:
 
 **Local mode** — `fixel scan <path>`
 
-Walks all `.tsx` and `.jsx` files under `<path>` and checks each one for
-prohibited design patterns. Reads framework and token settings from
+Walks all `.ts`, `.tsx`, `.js`, and `.jsx` files under `<path>` and checks
+each one for prohibited design patterns. Reads framework and token settings from
 `fixel.config.json`; if no config is found, falls back to built-in defaults.
 
 Checks run:
@@ -292,7 +292,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 22
           cache: npm
       - run: npm ci
       - run: npx fixel scan ./src      # prohibited patterns — no token needed
@@ -359,6 +359,14 @@ inside nested sub-components are not collected. Add these tokens manually to
 limited accuracy.
 
 **`fixel annotate` is not automatic** — manual or opt-in CI step only.
+
+## Feedback
+
+Fixel is early and shaped by the people using it. If something's wrong,
+missing, or confusing, [open an issue](https://github.com/AKollu72/fixel/issues)
+or join the pinned discussion —
+[What did you try Fixel on and what broke?](https://github.com/AKollu72/fixel/discussions/1)
+"This didn't work on my setup" is exactly the report I want.
 
 ## License
 
