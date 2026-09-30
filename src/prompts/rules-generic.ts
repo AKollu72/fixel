@@ -1,5 +1,5 @@
 // Copyright (c) 2025 Amrutha Kollu. All rights reserved.
-// Licensed under the Functional Source License, Version 1.1 (FSL-1.1-MIT) — see LICENSE for details.
+// Licensed under the MIT License — see LICENSE for details.
 
 /**
  * Framework-agnostic generation rules.
@@ -23,7 +23,7 @@ If _resolvedTypographyToken is absent (non-TEXT node), use the TYPOGRAPHY SCALE 
 above to look up the correct token by exact fontSize + fontWeight.
 
 NEVER match typography by:
-  • The component's size prop (MD button ≠ MD_Medium — coincidence of names)
+  • The component's size prop (a size-"md" button ≠ a token named "bodyMd" — coincidence of names)
   • The layer name in Figma
   • Similarity to another token name
   • Any inference beyond the table lookup
@@ -94,7 +94,7 @@ the component file.  Spec-lock tests import these tables directly to assert
 token choices at the data level — without DOM rendering.
 
 Example:
-  export const TEXT_VARIANT = { MD: 'MD_Medium', SM: 'SM_Regular' } as const;
+  export const TEXT_VARIANT = { MD: 'bodyMd', SM: 'bodySm' } as const;
   export const TYPE_TOKENS  = { Primary: { bg: tokens.button.primary.bg } } as const;
 
 
@@ -115,7 +115,7 @@ generated code.  They are untrackable and ignored by the pipeline.
 
 If a value required a deliberate choice that deviates from the raw Figma data,
 explain it with a plain comment:
-  // Figma specifies 12px; resolved to MD_Medium (closest defined token)
+  // Figma specifies 12px; resolved to bodySm (closest defined token)
 Intentional deviations are tracked in fixel.overrides.json, not in source.
 
 

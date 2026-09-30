@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Copyright (c) 2025 Amrutha Kollu. All rights reserved.
-// Licensed under the Functional Source License, Version 1.1 (FSL-1.1-MIT) — see LICENSE for details.
+// Licensed under the MIT License — see LICENSE for details.
 
 /**
  * fixel import — generates token files from Figma design system styles
@@ -29,6 +29,7 @@ import {
   FixelConfigError,
   loadConfig,
   loadEnvFile,
+  readTextFile,
   resolveFigmaToken,
 } from '../core/config';
 
@@ -366,7 +367,8 @@ function buildTypographyEntries(
  * Returns the number of entries actually added.
  */
 function mergeTypographyIntoConfig(configPath: string, entries: TypographyEntry[]): number {
-  const json = JSON.parse(fs.readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+  // readTextFile strips a UTF-8 BOM (PowerShell's Out-File default).
+  const json = JSON.parse(readTextFile(configPath)) as Record<string, unknown>;
 
   const typo  = (json['typography'] ?? {}) as Record<string, unknown>;
   const scale = (typo['scale']     ?? {}) as Record<string, unknown>;
@@ -575,15 +577,15 @@ async function main(): Promise<void> {
 main().catch((err: unknown) => {
   if (err instanceof FixelConfigError) {
     console.error(`\n  ${C.yellow}Config error:${C.reset} ${err.message}\n`);
-    process.exit(1);
-  }
-  if (err instanceof FigmaApiError) {
+  } else if (err instanceof FigmaApiError) {
     console.error(`\n  ${C.red}Figma API error:${C.reset} ${err.message}\n`);
     if (err.statusCode === 403) {
       console.error(`  Check that FIGMA_ACCESS_TOKEN is set and has read access to this file.\n`);
     }
-    process.exit(1);
+  } else {
+    console.error(`\n  ${C.red}Error:${C.reset} ${err instanceof Error ? err.message : String(err)}\n`);
   }
-  console.error(`\n  ${C.red}Error:${C.reset} ${err instanceof Error ? err.message : String(err)}\n`);
-  process.exit(1);
+  // exitCode + natural drain instead of process.exit(1) — hard-exiting while
+  // undici tears down its socket trips a libuv assertion on Windows.
+  process.exitCode = 1;
 });

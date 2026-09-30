@@ -1,5 +1,5 @@
 // Copyright (c) 2025 Amrutha Kollu. All rights reserved.
-// Licensed under the Functional Source License, Version 1.1 (FSL-1.1-MIT) — see LICENSE for details.
+// Licensed under the MIT License — see LICENSE for details.
 
 import * as fs   from 'node:fs';
 import * as path from 'node:path';
@@ -13,6 +13,24 @@ export class FixelConfigError extends Error {
   }
 }
 
+// ─── BOM handling ─────────────────────────────────────────────────────────────
+
+/**
+ * Strips a leading UTF-8 byte-order mark.
+ *
+ * Windows tools (PowerShell's Out-File, some editors) prepend U+FEFF to UTF-8
+ * files.  JSON.parse rejects it, so every fixel file read that feeds a JSON
+ * or config parser must go through this first.
+ */
+export function stripBom(text: string): string {
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
+/** Reads a UTF-8 text file and strips any leading byte-order mark. */
+export function readTextFile(filePath: string): string {
+  return stripBom(fs.readFileSync(filePath, 'utf8'));
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 /**
@@ -21,7 +39,7 @@ export class FixelConfigError extends Error {
  * baked-in line-height, so the deterministic resolver never has to guess.
  */
 export interface TypographyScaleEntry {
-  /** Token name as it appears in generated component code.  e.g. "MD_Medium" */
+  /** Token name as it appears in generated component code.  e.g. "bodyMd" */
   token:      string;
   /** CSS line-height value baked into this variant.         e.g. "16px"     */
   lineHeight: string;
@@ -37,10 +55,10 @@ export interface TypographyScaleEntry {
  *
  * @example
  * {
- *   "34/any": { "token": "H1",        "lineHeight": "40px" },
- *   "14/700": { "token": "LG_Bold",   "lineHeight": "20px" },
- *   "14/500": { "token": "LG_Medium", "lineHeight": "20px" },
- *   "12/500": { "token": "MD_Medium", "lineHeight": "16px" }
+ *   "32/any": { "token": "heading-1",   "lineHeight": "40px" },
+ *   "16/600": { "token": "body-strong", "lineHeight": "24px" },
+ *   "16/400": { "token": "body",        "lineHeight": "24px" },
+ *   "12/400": { "token": "caption",     "lineHeight": "16px" }
  * }
  */
 export type TypographyScale = Record<string, TypographyScaleEntry>;
@@ -138,7 +156,7 @@ export interface TypographyConfig {
    * @default "typography-{token}"
    * @example
    *   "typography-{token}" + "bodySm" → "typography-body-sm"
-   *   "font-{token}"       + "LG_Bold" → "font-lg-bold"
+   *   "font-{token}"       + "Body_Strong" → "font-body-strong"
    */
   tailwindClass?: string;
 }
@@ -410,7 +428,7 @@ function validateTypographyScale(
   if (entries.length === 0) {
     throw new FixelConfigError(
       `typography.scale must have at least one entry in ${filename}.\n` +
-      `  Example: { "12/500": { "token": "MD_Medium", "lineHeight": "16px" } }`,
+      `  Example: { "12/500": { "token": "bodyMd", "lineHeight": "16px" } }`,
     );
   }
 
@@ -434,7 +452,7 @@ function validateTypographyScale(
     if (typeof entry['token'] !== 'string' || !entry['token']) {
       throw new FixelConfigError(
         `typography.scale["${key}"].token in ${filename} must be a non-empty string.\n` +
-        `  Example: "MD_Medium"`,
+        `  Example: "bodyMd"`,
       );
     }
     if (typeof entry['lineHeight'] !== 'string' || !entry['lineHeight']) {
@@ -607,7 +625,7 @@ export function loadConfig(configPath?: string): ResolvedConfig {
 
   let raw: unknown;
   try {
-    raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    raw = JSON.parse(readTextFile(filePath));
   } catch {
     throw new FixelConfigError(
       `${filename} is not valid JSON.\n` +
@@ -682,9 +700,9 @@ export function loadConfig(configPath?: string): ResolvedConfig {
       `  It maps "fontSize/fontWeight" keys to { token, lineHeight } entries.\n\n` +
       `  Minimal example:\n` +
       `  "scale": {\n` +
-      `    "14/700": { "token": "LG_Bold",   "lineHeight": "20px" },\n` +
-      `    "12/500": { "token": "MD_Medium",  "lineHeight": "16px" },\n` +
-      `    "12/400": { "token": "MD_Regular", "lineHeight": "16px" }\n` +
+      `    "16/600": { "token": "body-strong", "lineHeight": "24px" },\n` +
+      `    "16/400": { "token": "body",        "lineHeight": "24px" },\n` +
+      `    "12/400": { "token": "caption",     "lineHeight": "16px" }\n` +
       `  }`,
     );
   }
@@ -793,9 +811,11 @@ export function loadConfig(configPath?: string): ResolvedConfig {
  * Returns a template FixelConfig populated with sensible defaults and
  * placeholder values.  Used by `fixel init` to write the initial config file.
  *
- * The typography scale is pre-filled with a complete MUI-style scale covering
- * headings (H1–H5), body text (LG/MD/SM variants), and overline.
- * Users replace or extend these entries to match their own design system.
+ * The typography scale is a GENERIC PLACEHOLDER (heading-1 … caption).
+ * The token names almost certainly do not match any real project — users must
+ * replace them with their own design system's names before `fixel generate`
+ * or the typography checks in `fixel verify` can resolve anything.
+ * generate warns when the scale is still this default.
  *
  * No real API keys, file keys, or access tokens appear here — all sensitive
  * values are environment-variable references.
@@ -820,27 +840,19 @@ export function createDefaultConfig(): FixelConfig {
     typography: {
       importPath: '@/tokens/typography',
       scale: {
-        // Headings — weight is always 700 in most design systems; "any" matches all
-        '34/any': { token: 'H1', lineHeight: '40px' },
-        '28/any': { token: 'H2', lineHeight: '34px' },
-        '22/any': { token: 'H3', lineHeight: '28px' },
-        '18/any': { token: 'H4', lineHeight: '24px' },
-        '16/any': { token: 'H5', lineHeight: '22px' },
-        // Large body (14px)
-        '14/700': { token: 'LG_Bold',     lineHeight: '20px' },
-        '14/500': { token: 'LG_Medium',   lineHeight: '20px' },
-        '14/400': { token: 'LG_Regular',  lineHeight: '20px' },
-        // Medium body (12px)
-        '12/700': { token: 'MD_Bold',     lineHeight: '16px' },
-        '12/600': { token: 'MD_SemiBold', lineHeight: '16px' },
-        '12/500': { token: 'MD_Medium',   lineHeight: '16px' },
-        '12/400': { token: 'MD_Regular',  lineHeight: '16px' },
-        // Small body (11px)
-        '11/700': { token: 'SM_Bold',     lineHeight: '16px' },
-        '11/500': { token: 'SM_Medium',   lineHeight: '16px' },
-        '11/400': { token: 'SM_Regular',  lineHeight: '16px' },
-        // Overline (10px)
-        '10/any': { token: 'Overline_Bold', lineHeight: '16px' },
+        // ── PLACEHOLDER SCALE — replace with your design system's names ──────
+        // These generic tokens (heading-1 … caption) exist so the config is
+        // valid out of the box.  Map each "fontSize/fontWeight" key to the
+        // typography token names YOUR project actually exports.
+        // "any" as the weight matches every weight at that size.
+        '32/any': { token: 'heading-1',   lineHeight: '40px' },
+        '24/any': { token: 'heading-2',   lineHeight: '32px' },
+        '20/any': { token: 'heading-3',   lineHeight: '28px' },
+        '16/600': { token: 'body-strong', lineHeight: '24px' },
+        '16/400': { token: 'body',        lineHeight: '24px' },
+        '14/600': { token: 'label',       lineHeight: '20px' },
+        '14/400': { token: 'body-small',  lineHeight: '20px' },
+        '12/400': { token: 'caption',     lineHeight: '16px' },
       },
     },
     output: {

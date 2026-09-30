@@ -1,5 +1,5 @@
 // Copyright (c) 2025 Amrutha Kollu. All rights reserved.
-// Licensed under the Functional Source License, Version 1.1 (FSL-1.1-MIT) — see LICENSE for details.
+// Licensed under the MIT License — see LICENSE for details.
 
 import type { ResolvedConfig } from '../core/config';
 import { tokenToKebab } from '../core/typography';
@@ -32,9 +32,9 @@ export function buildTailwindRules(config: ResolvedConfig): string {
 
   const tailwindClassTmpl = config.typography.tailwindClass;
   // exampleClass uses kebab conversion so the AI sees realistic output class names
-  const exampleClass      = tailwindClassTmpl.replace('{token}', tokenToKebab('bodySm'));
-  const exampleLGBold     = tailwindClassTmpl.replace('{token}', tokenToKebab('LG_Bold'));
-  const exampleMDMedium   = tailwindClassTmpl.replace('{token}', tokenToKebab('MD_Medium'));
+  const exampleClass       = tailwindClassTmpl.replace('{token}', tokenToKebab('bodySm'));
+  const exampleBodyStrong  = tailwindClassTmpl.replace('{token}', tokenToKebab('Body_Strong'));
+  const exampleHeadingTwo  = tailwindClassTmpl.replace('{token}', tokenToKebab('headingTwo'));
 
   return `\
 ── TAILWIND-SPECIFIC RULES ──────────────────────────────────────────────────────
@@ -79,9 +79,9 @@ class via the project's class template:
   Template:  ${tailwindClassTmpl}
 
   The {token} placeholder is expanded by converting the token name to kebab-case:
-    "bodySm"    → "body-sm"    →  class "${exampleClass}"
-    "LG_Bold"   → "lg-bold"    →  class "${exampleLGBold}"
-    "MD_Medium" → "md-medium"  →  class "${exampleMDMedium}"
+    "bodySm"      → "body-sm"     →  class "${exampleClass}"
+    "Body_Strong" → "body-strong" →  class "${exampleBodyStrong}"
+    "headingTwo"  → "heading-two" →  class "${exampleHeadingTwo}"
 
 Apply the resulting class to the element that renders the text.
 

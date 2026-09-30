@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Copyright (c) 2025 Amrutha Kollu. All rights reserved.
-// Licensed under the Functional Source License, Version 1.1 (FSL-1.1-MIT) — see LICENSE for details.
+// Licensed under the MIT License — see LICENSE for details.
 
 /**
  * fixel verify — drift detection between Figma and component source
@@ -38,6 +38,7 @@ import {
   loadConfig,
   loadEnvFile,
   parseNodeArg,
+  readTextFile,
   resolveFigmaToken,
 } from '../core/config';
 
@@ -71,17 +72,11 @@ import {
   componentStatus,
 } from '../core/drift';
 
-// ─── ANSI helpers ─────────────────────────────────────────────────────────────
+import { stdoutC } from '../core/color';
 
-const C = {
-  reset:  '\x1b[0m',
-  bold:   '\x1b[1m',
-  dim:    '\x1b[2m',
-  green:  '\x1b[32m',
-  yellow: '\x1b[33m',
-  red:    '\x1b[31m',
-  cyan:   '\x1b[36m',
-};
+// ─── ANSI helpers (gated on stdout TTY / NO_COLOR) ───────────────────────────
+
+const C = stdoutC();
 
 // ─── CLI args ─────────────────────────────────────────────────────────────────
 
@@ -157,6 +152,27 @@ function findComponents(
   return entries.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * Finds orphaned specs: a `<Name>.fixel.json` whose `<Name>.tsx` is gone.
+ * Deleting or moving a component must not silently delete its drift
+ * protection — verify warns about these instead of skipping them invisibly.
+ */
+function findOrphanSpecs(componentDir: string, componentFilter: string | null): string[] {
+  if (!fs.existsSync(componentDir)) return [];
+  const orphans: string[] = [];
+  for (const name of fs.readdirSync(componentDir)) {
+    if (componentFilter && name !== componentFilter) continue;
+    const dir = path.join(componentDir, name);
+    if (!fs.statSync(dir).isDirectory()) continue;
+    const specPath = path.join(dir, `${name}.fixel.json`);
+    const codePath = path.join(dir, `${name}.tsx`);
+    if (fs.existsSync(specPath) && !fs.existsSync(codePath)) {
+      orphans.push(specPath);
+    }
+  }
+  return orphans.sort();
+}
+
 // ─── Report printer ───────────────────────────────────────────────────────────
 
 function coloured(status: CheckStatus, text: string): string {
@@ -171,8 +187,8 @@ function daysSince(iso: string): number {
 }
 
 function printComponentReport(report: ComponentReport, isLive: boolean): void {
-  const age      = daysSince(report.generatedAt);
-  const ageLabel = age === 0 ? 'today' : age === 1 ? '1 day ago' : `${age} days ago`;
+  const age      = report.generatedAt ? daysSince(report.generatedAt) : NaN;
+  const ageLabel = Number.isNaN(age) ? 'unknown age' : age === 0 ? 'today' : age === 1 ? '1 day ago' : `${age} days ago`;
   const src      = isLive ? 'live Figma' : 'stored spec';
 
   console.log(
@@ -215,8 +231,38 @@ function printComponentReport(report: ComponentReport, isLive: boolean): void {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
+function printVerifyHelp(): void {
+  console.log(`
+  fixel verify — drift detection between Figma and component source
+
+  Usage:
+    fixel verify                                           Check all components (offline)
+    fixel verify --component Badge                         Check one component
+    fixel verify --component Badge --node FILEKEY:NODEID   Re-fetch live Figma data
+    fixel verify --write-overrides                         Register intentional deviations
+
+  Options:
+    --component <Name>    Component to check (default: all with spec files)
+    --node <FILEKEY:ID>   Re-fetch live Figma data (requires FIGMA_ACCESS_TOKEN)
+    --no-cache            Bypass the Figma API cache
+    --write-overrides     Prompt to save intentional drift as overrides
+    --help, -h            Show this help
+
+  Exit codes:
+    0  all components pass
+    1  one or more components have unregistered drift errors
+    2  no spec files found — run \`fixel generate\` first
+`);
+}
+
 async function main(): Promise<void> {
-  const args = parseArgs(process.argv.slice(2));
+  const argv = process.argv.slice(2);
+  if (argv.includes('--help') || argv.includes('-h')) {
+    printVerifyHelp();
+    process.exit(0);
+  }
+
+  const args = parseArgs(argv);
 
   // Require --component when --node is used: applying one node's live Figma
   // data to every component in the directory would produce silently wrong results.
@@ -242,6 +288,17 @@ async function main(): Promise<void> {
   const needsSpec = !isLive;
 
   const entries = findComponents(componentBaseDir, args.component, needsSpec);
+
+  // ── Orphaned specs: spec file present, component source deleted ────────────
+  // Warn loudly — otherwise deleting a .tsx silently removes its drift gate.
+  const orphans = findOrphanSpecs(componentBaseDir, args.component);
+  if (orphans.length > 0) {
+    console.warn(`\n  ${C.yellow}⚠${C.reset}  ${orphans.length} orphaned spec(s) — component source is missing:`);
+    for (const specPath of orphans) {
+      console.warn(`     ${path.relative(process.cwd(), specPath)}  ${C.dim}(no matching .tsx — this component is no longer verified)${C.reset}`);
+    }
+    console.warn(`     ${C.dim}Delete the spec if the component was intentionally removed, or restore the .tsx.${C.reset}`);
+  }
 
   if (entries.length === 0) {
     if (args.component) {
@@ -348,7 +405,28 @@ async function main(): Promise<void> {
   } else {
     // ── Offline mode: compare against stored spec ─────────────────────────────
     for (const entry of entries) {
-      const spec   = JSON.parse(fs.readFileSync(entry.specPath!, 'utf8')) as FixelSpec;
+      let spec: FixelSpec;
+      try {
+        // readTextFile strips a UTF-8 BOM (PowerShell's Out-File default).
+        spec = JSON.parse(readTextFile(entry.specPath!)) as FixelSpec;
+      } catch (err) {
+        const rel = path.relative(process.cwd(), entry.specPath!);
+        console.error(
+          `\n  ${C.red}✗${C.reset}  ${C.bold}${entry.name}${C.reset}  Spec file is not valid JSON: ${rel}\n` +
+          `     ${err instanceof Error ? err.message : String(err)}\n` +
+          `     ${C.dim}Fix the JSON by hand or run fixel generate --force to rewrite it.${C.reset}`,
+        );
+        reports.push({
+          name:        entry.name,
+          specPath:    entry.specPath,
+          codePath:    entry.codePath,
+          figmaNode:   '(unreadable spec)',
+          generatedAt: '',
+          checks:      [{ label: 'Spec parse', figmaValue: '', status: 'fail', detail: `${rel} is not valid JSON` }],
+          status:      'fail',
+        });
+        continue;
+      }
       const code   = fs.readFileSync(entry.codePath, 'utf8');
 
       const specIsEmpty =
@@ -497,16 +575,28 @@ async function main(): Promise<void> {
 
 main().catch((err: unknown) => {
   if (err instanceof FixelConfigError) {
-    console.error(`\n  ${C.yellow}Config error:${C.reset} ${err.message}\n`);
-    process.exit(1);
+    // Exit 2, matching "nothing to verify yet": a repo without fixel.config.json
+    // has no specs either, and the documented CI recipe relies on `fixel verify`
+    // exiting cleanly before the project is set up.  Exit 1 here failed the
+    // build of every config-less adopter.
+    console.error(
+      `\n  ${C.yellow}⚠${C.reset}  Nothing to verify — ${err.message}\n\n` +
+      `  fixel verify needs a fixel.config.json and component specs.\n` +
+      `  Set up with:  ${C.cyan}fixel init${C.reset}\n` +
+      `  (fixel scan <path> works without any config.)\n`,
+    );
+    process.exitCode = 2;
+    return;
   }
   if (err instanceof FigmaApiError) {
     console.error(`\n  ${C.red}Figma API error:${C.reset} ${err.message}\n`);
     if ((err as FigmaApiError).statusCode === 403) {
       console.error(`  Check that FIGMA_ACCESS_TOKEN is set and has read access to this file.\n`);
     }
-    process.exit(1);
+  } else {
+    console.error(`\n  ${C.red}Error:${C.reset} ${err instanceof Error ? err.message : String(err)}\n`);
   }
-  console.error(`\n  ${C.red}Error:${C.reset} ${err instanceof Error ? err.message : String(err)}\n`);
-  process.exit(1);
+  // exitCode + natural drain instead of process.exit(1) — hard-exiting while
+  // undici tears down its socket trips a libuv assertion on Windows.
+  process.exitCode = 1;
 });

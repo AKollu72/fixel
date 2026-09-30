@@ -1,8 +1,8 @@
 {
   "name": "fixel",
-  "version": "0.2.5",
+  "version": "0.2.8",
   "description": "If you generate React from Figma with AI, Fixel locks the exact design values and fails CI when they drift.",
-  "license": "FSL-1.1-MIT",
+  "license": "MIT",
   "author": "Amrutha Kollu",
   "repository": {
     "type": "git",
@@ -35,6 +35,7 @@
     "fixel-mcp-bin.js",
     "dist/**/*.js",
     "dist/**/*.d.ts",
+    "!dist/cli/__tests__",
     "LICENSE",
     "README.md",
     "fixel.config.example.json"

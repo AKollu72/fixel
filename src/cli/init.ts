@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Copyright (c) 2025 Amrutha Kollu. All rights reserved.
-// Licensed under the Functional Source License, Version 1.1 (FSL-1.1-MIT) — see LICENSE for details.
+// Licensed under the MIT License — see LICENSE for details.
 
 /**
  * fixel init — interactive project setup
@@ -27,16 +27,11 @@ import {
   type FixelConfig,
 } from '../core/config';
 
-// ─── ANSI helpers ─────────────────────────────────────────────────────────────
+import { stdoutC } from '../core/color';
 
-const C = {
-  reset:  '\x1b[0m',
-  bold:   '\x1b[1m',
-  dim:    '\x1b[2m',
-  green:  '\x1b[32m',
-  yellow: '\x1b[33m',
-  cyan:   '\x1b[36m',
-};
+// ─── ANSI helpers (gated on stdout TTY / NO_COLOR) ───────────────────────────
+
+const C = stdoutC();
 
 // ─── CLI args ─────────────────────────────────────────────────────────────────
 
@@ -101,7 +96,22 @@ function deriveImportAlias(tokenFilePath: string): string {
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  const { yes } = parseInitArgs(process.argv.slice(2));
+  const rawArgv = process.argv.slice(2);
+  if (rawArgv.includes('--help') || rawArgv.includes('-h')) {
+    console.log(`
+  fixel init — interactive project setup
+
+  Usage:
+    fixel init          Run interactive setup
+    fixel init --yes    Accept all defaults (non-interactive)
+
+  Writes fixel.config.json in the current directory.
+  Safe to re-run — prompts before overwriting an existing config.
+`);
+    process.exit(0);
+  }
+
+  const { yes } = parseInitArgs(rawArgv);
   const defaults = createDefaultConfig();
   const configPath = path.resolve(process.cwd(), CONFIG_FILENAME);
 
@@ -202,24 +212,8 @@ async function main(): Promise<void> {
         validate: (v) => v.trim() !== '' || 'Typography import path cannot be empty.',
       });
 
-  // ── Question 5: AI provider ────────────────────────────────────────────────
-  const aiProvider: AiProvider = yes
-    ? (defaults.ai.provider as AiProvider)
-    : await select({
-        message: 'Which AI provider will you use for fixel generate?',
-        choices: [
-          {
-            name:  'Anthropic (Claude)',
-            value: 'anthropic' as AiProvider,
-            description: 'Reads ANTHROPIC_API_KEY from environment',
-          },
-          {
-            name:  'OpenAI (GPT)',
-            value: 'openai' as AiProvider,
-            description: 'Reads OPENAI_API_KEY from environment',
-          },
-        ],
-      });
+  // ── Question 5: AI provider (Anthropic only) ──────────────────────────────
+  const aiProvider: AiProvider = 'anthropic';
 
   // ── Assemble config ────────────────────────────────────────────────────────
   const config: FixelConfig = {
@@ -271,7 +265,7 @@ async function main(): Promise<void> {
   }
 
   // ── Next steps ─────────────────────────────────────────────────────────────
-  const apiKeyVar = aiProvider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY';
+  const apiKeyVar = 'ANTHROPIC_API_KEY';
 
   console.log(`  ${C.bold}Next steps:${C.reset}\n`);
   console.log(`  1. Create a Figma personal access token:\n`);
@@ -288,7 +282,8 @@ async function main(): Promise<void> {
   console.log(`     ${C.cyan}${apiKeyVar}${C.reset}=<your-api-key>\n`);
   console.log(`  3. Open ${C.bold}${CONFIG_FILENAME}${C.reset} and update ${C.cyan}typography.scale${C.reset} to match`);
   console.log(`     your design system's font sizes and token names.`);
-  console.log(`     The defaults are a starting point — replace token names with yours.\n`);
+  console.log(`     ${C.yellow}The scale ships as a generic placeholder (heading-1, body, caption…)${C.reset}`);
+  console.log(`     ${C.yellow}— those names won't resolve until you replace them with your own.${C.reset}\n`);
   console.log(`  4. Verify token coverage for a Figma component:\n`);
   console.log(`     ${C.cyan}fixel scan --node FILEKEY:NODEID --group mycomponent${C.reset}\n`);
   console.log(`  5. Generate your first component:\n`);

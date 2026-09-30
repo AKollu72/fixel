@@ -1,5 +1,5 @@
 // Copyright (c) 2025 Amrutha Kollu. All rights reserved.
-// Licensed under the Functional Source License, Version 1.1 (FSL-1.1-MIT) — see LICENSE for details.
+// Licensed under the MIT License — see LICENSE for details.
 
 import type { ResolvedConfig } from '../core/config';
 
@@ -33,7 +33,7 @@ TYPOGRAPHY VARIANT (MUI) — _resolvedTypographyToken is the variant prop
 Write:
   <Typography variant={_resolvedTypographyToken}>…</Typography>
   // or, when the token is a constant:
-  <Typography variant="MD_Medium">…</Typography>
+  <Typography variant="bodyMd">…</Typography>
 
 NEVER substitute a different variant based on the component's size prop, the layer
 name, or any string-similarity reasoning.
@@ -47,8 +47,8 @@ LINE HEIGHT (MUI) — never add lineHeight to a Typography sx prop
 The MUI Typography variant bakes in lineHeight via its theme definition.
 If you add lineHeight to sx, you override the correct value and collapse it.
 
-  ❌  <Typography variant="MD_Medium" sx={{ lineHeight: 1 }}>
-  ✅  <Typography variant="MD_Medium">
+  ❌  <Typography variant="bodyMd" sx={{ lineHeight: 1 }}>
+  ✅  <Typography variant="bodyMd">
 
 If you find yourself wanting to adjust lineHeight, you are on the wrong variant.
 

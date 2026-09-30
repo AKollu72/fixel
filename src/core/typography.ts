@@ -1,5 +1,5 @@
 // Copyright (c) 2025 Amrutha Kollu. All rights reserved.
-// Licensed under the Functional Source License, Version 1.1 (FSL-1.1-MIT) — see LICENSE for details.
+// Licensed under the MIT License — see LICENSE for details.
 
 import { FixelConfigError } from './config';
 import type { TypographyScale, TypographyScaleEntry } from './config';
@@ -27,6 +27,9 @@ export function resolveTypographyToken(
   fontSize:   number,
   fontWeight: number,
   scale:      TypographyScale,
+  /** The node's Figma lineHeightPx, when the caller has it — used to make the
+   *  remedy JSON in the error message copy-pasteable with the real value. */
+  lineHeightPxHint?: number,
 ): TypographyScaleEntry {
   // 1. Exact match
   const exact = scale[`${fontSize}/${fontWeight}`];
@@ -39,13 +42,22 @@ export function resolveTypographyToken(
   // 3. No match — surface a config error immediately.
   //    Continuing with a missing token would silently produce wrong typography
   //    in generated components and false-positive drift errors in verify.
+  //    This commonly happens when the node uses text that is not a PUBLISHED
+  //    Figma style: `fixel import` reads published styles only, so it never
+  //    saw this (fontSize, fontWeight) pair.
+  const lh = lineHeightPxHint && lineHeightPxHint > 0
+    ? `${Math.round(lineHeightPxHint)}px`
+    : `${Math.round(fontSize * 1.4)}px`;
   throw new FixelConfigError(
-    `No typography scale entry found for fontSize=${fontSize} fontWeight=${fontWeight}.\n` +
-    `  Add one of the following to the typography.scale section of fixel.config.json:\n\n` +
-    `    "${fontSize}/${fontWeight}": { "token": "YOUR_TOKEN", "lineHeight": "16px" }\n` +
-    `  or, to match this font size at any weight:\n` +
-    `    "${fontSize}/any":          { "token": "YOUR_TOKEN", "lineHeight": "16px" }\n\n` +
-    `  See your project's typography definition for the correct token name and line-height.`,
+    `No typography scale entry found for fontSize=${fontSize} fontWeight=${fontWeight}.\n\n` +
+    `  Fix: add this entry to "typography.scale" in fixel.config.json\n` +
+    `  (replace YOUR_TOKEN with your design system's token name):\n\n` +
+    `    "${fontSize}/${fontWeight}": { "token": "YOUR_TOKEN", "lineHeight": "${lh}" }\n\n` +
+    `  or, to match this font size at any weight:\n\n` +
+    `    "${fontSize}/any": { "token": "YOUR_TOKEN", "lineHeight": "${lh}" }\n\n` +
+    `  Alternatively: publish this text style in Figma (Styles panel), then\n` +
+    `  re-run "fixel import --file FILEKEY --write" to merge it automatically —\n` +
+    `  fixel import reads published text styles only.`,
   );
 }
 
@@ -60,7 +72,7 @@ export interface ResolvedTextStyle {
   fontWeight:   number;
   /** Figma's raw lineHeightPx for this node (used as fallback if token has no lineHeight). */
   lineHeightPx: number;
-  /** Token name from the scale, e.g. "MD_Medium". */
+  /** Token name from the scale, e.g. "bodyMd". */
   token:        string;
   /** The lineHeight value from the scale entry, e.g. "16px". */
   lineHeight:   string;
@@ -93,7 +105,7 @@ export function extractTextStyles(
 
     // resolveTypographyToken throws FixelConfigError when no match is found,
     // so entry is always a valid scale entry from this point forward.
-    const entry = resolveTypographyToken(fontSize, fontWeight, scale);
+    const entry = resolveTypographyToken(fontSize, fontWeight, scale, lhPx);
 
     if (!seen.has(entry.token)) {
       seen.set(entry.token, {
@@ -124,7 +136,7 @@ export function extractTextStyles(
  *
  * Placing this above the raw Figma JSON means the AI reads the correct token
  * name before it has a chance to infer one from the data.  It is the primary
- * guard against the "MD button uses LG_Medium" class of typography error.
+ * guard against the "MD button uses bodyLg" class of typography error.
  *
  * Returns an empty string when no text styles were found, so callers can
  * concatenate unconditionally.
@@ -203,8 +215,8 @@ export function toSpecTextStyles(
 
 /**
  * Converts a typography token name to kebab-case for Tailwind class lookups.
- * Handles camelCase (bodySm → body-sm), PascalCase+underscore (LG_Bold → lg-bold),
- * and UPPER_UNDERSCORE (MD_Medium → md-medium).
+ * Handles camelCase (bodySm → body-sm), PascalCase+underscore (Body_Strong → body-strong),
+ * and UPPER_UNDERSCORE (bodyMd → md-medium).
  */
 export function tokenToKebab(token: string): string {
   return token

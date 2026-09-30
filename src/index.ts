@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Copyright (c) 2025 Amrutha Kollu. All rights reserved.
-// Licensed under the Functional Source License, Version 1.1 (FSL-1.1-MIT) — see LICENSE for details.
+// Licensed under the MIT License — see LICENSE for details.
+
+import { stdoutC } from './core/color';
 
 /**
  * fixel — Figma-to-React design system pipeline
@@ -74,10 +76,7 @@ switch (command) {
 // ─── Help ─────────────────────────────────────────────────────────────────────
 
 function printHelp(): void {
-  const b = '\x1b[1m';
-  const d = '\x1b[2m';
-  const c = '\x1b[36m';
-  const r = '\x1b[0m';
+  const { bold: b, dim: d, cyan: c, reset: r } = stdoutC();
 
   console.log(`
 ${b}  fixel${r} — Figma-to-React design system pipeline
@@ -110,9 +109,10 @@ ${b}  fixel${r} — Figma-to-React design system pipeline
     ${c}--force${r}                   Overwrite existing files             (generate)
 
   ${b}Environment variables:${r}
-    ${c}FIGMA_ACCESS_TOKEN${r}        Figma personal access token  (required)
-    ${c}ANTHROPIC_API_KEY${r}         Anthropic API key            (if using Claude)
-    ${c}OPENAI_API_KEY${r}            OpenAI API key               (if using GPT)
+    ${c}FIGMA_ACCESS_TOKEN${r}        Figma personal access token  (required for import / generate / annotate)
+    ${c}ANTHROPIC_API_KEY${r}         Anthropic API key            (required for generate)
+
+  ${d}fixel scan <path> and fixel verify run offline — no token, no API key.${r}
 
   ${d}Set env vars in .env.local — fixel loads it automatically.${r}
 

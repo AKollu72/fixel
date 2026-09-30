@@ -1,5 +1,5 @@
 // Copyright (c) 2025 Amrutha Kollu. All rights reserved.
-// Licensed under the Functional Source License, Version 1.1 (FSL-1.1-MIT) — see LICENSE for details.
+// Licensed under the MIT License — see LICENSE for details.
 
 import * as fs   from 'node:fs';
 import * as path from 'node:path';
@@ -255,8 +255,11 @@ export async function fetchFigmaNode(opts: FetchNodeOptions): Promise<FigmaNode>
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
+      // 'Connection: close' — destroy the socket once the response completes.
+      // A pooled keep-alive socket left open while a CLI error path calls
+      // process.exit trips a libuv assertion on Windows (src\win\async.c:76).
       res = await fetch(url, {
-        headers: { 'X-Figma-Token': opts.accessToken },
+        headers: { 'X-Figma-Token': opts.accessToken, 'Connection': 'close' },
       });
     } catch (err) {
       // Network-level error (DNS failure, connection refused, etc.).
@@ -575,9 +578,11 @@ export async function fetchFileStyles(
 
   let res: Response;
   try {
+    // 'Connection: close' for the same Windows libuv-assertion reason as
+    // fetchFigmaNode above.
     res = await fetch(
       `https://api.figma.com/v1/files/${opts.fileKey}?depth=4`,
-      { headers: { 'X-Figma-Token': opts.accessToken } },
+      { headers: { 'X-Figma-Token': opts.accessToken, 'Connection': 'close' } },
     );
   } catch (err) {
     throw new FigmaApiError(

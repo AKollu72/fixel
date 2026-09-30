@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Copyright (c) 2025 Amrutha Kollu. All rights reserved.
-// Licensed under the Functional Source License, Version 1.1 (FSL-1.1-MIT) — see LICENSE for details.
+// Licensed under the MIT License — see LICENSE for details.
 
 /**
  * fixel scan — two modes
@@ -60,17 +60,35 @@ import {
   type AuditViolation,
 } from '../core/audit';
 
-// ─── ANSI helpers ─────────────────────────────────────────────────────────────
+import { stdoutC } from '../core/color';
 
-const C = {
-  reset:  '\x1b[0m',
-  bold:   '\x1b[1m',
-  dim:    '\x1b[2m',
-  green:  '\x1b[32m',
-  yellow: '\x1b[33m',
-  red:    '\x1b[31m',
-  cyan:   '\x1b[36m',
-};
+// ─── ANSI helpers (gated on stdout TTY / NO_COLOR) ───────────────────────────
+
+const C = stdoutC();
+
+// ─── Help ─────────────────────────────────────────────────────────────────────
+
+function printScanHelp(): void {
+  console.log(`
+  fixel scan — audit local React files or analyse a Figma node
+
+  Usage:
+    fixel scan <path>                         Audit .ts/.tsx/.js/.jsx files for prohibited patterns
+    fixel scan --node FILEKEY:NODEID          Token gap analysis for a Figma node
+
+  Options:
+    --node <FILEKEY:NODEID>   Figma file key + node ID (Figma mode)
+    --group <name>            Token group name (Figma mode, default: component)
+    --write                   Write suggestions to .fixel-scan.json (Figma mode)
+    --no-cache                Bypass the 24-hour Figma API cache (Figma mode)
+    --help, -h                Show this help
+
+  Examples:
+    fixel scan ./src
+    fixel scan ./src/components/Button.tsx
+    fixel scan --node AbCdEfGhIjKlMnOpQrStUv:397:23320 --group badge
+`);
+}
 
 // ─── CLI args ─────────────────────────────────────────────────────────────────
 
@@ -171,6 +189,17 @@ function applyTokenKeyFormatting(patch: string): string {
 // ─── Local scan helpers ───────────────────────────────────────────────────────
 
 /**
+ * Paths the scanner must never audit, pre-resolved to absolute paths.
+ * Today this is exactly the configured token file — the one file where raw
+ * hex values are supposed to live.  Deliberately NOT the whole directory:
+ * layouts like src/components/tokens.ts put real components beside the token
+ * file, and those must still be scanned.
+ */
+export interface ScanExclusions {
+  files: Set<string>;
+}
+
+/**
  * Recursively collect React/TypeScript source files, skipping noise dirs
  * and non-source files.
  *
@@ -179,8 +208,9 @@ function applyTokenKeyFormatting(patch: string): string {
  *   *.test.*  / *.spec.*  — test files
  *   *.d.ts                — TypeScript declaration files
  *   *.config.ts / *.config.js — config files (tailwind.config.ts etc.)
+ *   the token file itself (when `exclude` is passed) — siblings are scanned
  */
-export function collectReactFiles(dir: string): string[] {
+export function collectReactFiles(dir: string, exclude?: ScanExclusions): string[] {
   const SKIP_DIRS = new Set(['node_modules', '.git', 'dist', 'build', '.next', 'coverage']);
   const results: string[] = [];
   let entries: fs.Dirent[];
@@ -190,10 +220,14 @@ export function collectReactFiles(dir: string): string[] {
     return results; // unreadable directory — skip silently
   }
   for (const entry of entries) {
+    const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       if (SKIP_DIRS.has(entry.name)) continue;
-      results.push(...collectReactFiles(path.join(dir, entry.name)));
+      results.push(...collectReactFiles(full, exclude));
     } else if (/\.(tsx?|jsx?)$/.test(entry.name)) {
+      // The token file is design-value ground truth — hex literals are
+      // REQUIRED there, so it is never scanned.
+      if (exclude?.files.has(path.resolve(full))) continue;
       if (
         /\.test\./.test(entry.name)           ||   // *.test.ts, *.test.tsx, etc.
         /\.spec\./.test(entry.name)           ||   // *.spec.*
@@ -273,16 +307,22 @@ async function runLocalScan(localPath: string): Promise<void> {
     }
   }
 
-  // ── Check token file exists (skip when no config was found on disk) ────────
-  if (!usingFallback) {
+  // ── Token file (when configured) ───────────────────────────────────────────
+  // A missing token file is a warning, not a failure: the local scan engine
+  // only needs `framework` + `prohibitedPatterns`, so `fixel init` followed by
+  // `fixel scan` must work before `fixel import --write` has ever run.
+  let tokenFileMissing = false;
+  let exclusions: ScanExclusions | undefined;
+  if (!usingFallback && config.tokens.file) {
     const tokenFilePath = path.resolve(process.cwd(), config.tokens.file);
     if (!fs.existsSync(tokenFilePath)) {
-      console.error(
-        `\n  ${C.yellow}No token file found at ${config.tokens.file}${C.reset}\n` +
-        `  Run "fixel import --file FILEKEY --write" to generate it.\n`,
-      );
-      process.exit(1);
+      tokenFileMissing = true;
     }
+    // Exclude exactly the token file from the audit — raw hex is REQUIRED
+    // there.  Applied whether or not the file exists yet, so a freshly
+    // imported token file is never flagged either.  Sibling files in the
+    // same directory ARE scanned (src/components/tokens.ts layouts).
+    exclusions = { files: new Set([tokenFilePath]) };
   }
 
   // ── Locate files ───────────────────────────────────────────────────────────
@@ -292,7 +332,27 @@ async function runLocalScan(localPath: string): Promise<void> {
     process.exit(1);
   }
 
-  const files = collectReactFiles(scanRoot);
+  let files: string[];
+  const scanStat = fs.statSync(scanRoot);
+  if (scanStat.isFile()) {
+    if (!/\.(tsx?|jsx?)$/.test(scanRoot)) {
+      console.error(
+        `\n  ${C.red}Unsupported file type:${C.reset} ${localPath}\n` +
+        `  Supported extensions: .ts .tsx .js .jsx\n`,
+      );
+      process.exit(1);
+    }
+    if (exclusions?.files.has(path.resolve(scanRoot))) {
+      console.log(
+        `\n  ${C.dim}${localPath} is the configured token file — excluded from scanning` +
+        ` (raw values are expected there).${C.reset}\n`,
+      );
+      process.exit(0);
+    }
+    files = [scanRoot];
+  } else {
+    files = collectReactFiles(scanRoot, exclusions);
+  }
 
   console.log(`\n${C.bold}  fixel scan${C.reset}  ${C.dim}local${C.reset}`);
   console.log(`  Path:      ${localPath}`);
@@ -301,11 +361,11 @@ async function runLocalScan(localPath: string): Promise<void> {
   }
   console.log(`  Framework: ${config.framework}${usingFallback ? ` ${C.dim}(auto-detected)${C.reset}` : ''}`);
   if (!usingFallback) {
-    console.log(`  Tokens:    ${config.tokens.file}`);
+    console.log(`  Tokens:    ${config.tokens.file}${tokenFileMissing ? ` ${C.yellow}(not found — run "fixel import --file FILEKEY --write" to generate it)${C.reset}` : ` ${C.dim}(excluded from scan)${C.reset}`}`);
   }
 
   if (files.length === 0) {
-    console.log(`\n  ${C.yellow}No .tsx / .jsx files found under ${localPath}${C.reset}\n`);
+    console.log(`\n  ${C.yellow}No .ts / .tsx / .js / .jsx files found under ${localPath}${C.reset}\n`);
     process.exit(0);
   }
 
@@ -349,7 +409,8 @@ async function runLocalScan(localPath: string): Promise<void> {
 
   // ── Summary ────────────────────────────────────────────────────────────────
   if (totalViolations === 0) {
-    console.log(`  ${C.green}${C.bold}✓ No prohibited patterns found across ${files.length} file(s).${C.reset}\n`);
+    console.log(`  ${C.green}${C.bold}✓ No prohibited patterns found across ${files.length} file(s).${C.reset}`);
+    console.log(`  ${C.dim}Next: \`fixel verify\` compares your code against Figma (needs a Figma token — see README).${C.reset}\n`);
     process.exit(0);
   }
 
@@ -357,8 +418,9 @@ async function runLocalScan(localPath: string): Promise<void> {
   const violWord   = totalViolations === 1  ? 'violation' : 'violations';
   console.log(
     `  ${C.red}${C.bold}${totalViolations} ${violWord} in ${filesWithErrors} ${errorWord}.${C.reset}` +
-    `  ${C.dim}Fix errors before committing.${C.reset}\n`,
+    `  ${C.dim}Fix errors before committing.${C.reset}`,
   );
+  console.log(`  ${C.dim}Next: fix the errors above and re-run. To check against Figma itself, see README for setup.${C.reset}\n`);
   process.exit(1);
 }
 
@@ -510,7 +572,12 @@ async function runFigmaScan(args: ScanArgs): Promise<void> {
 async function main(): Promise<void> {
   // process.argv: [node, fixel-bin.js, 'scan', ...rest]
   // slice(3) skips the 'scan' command word so parseArgs only sees the real arguments.
-  const args = parseArgs(process.argv.slice(3));
+  const rest = process.argv.slice(3);
+  if (rest.includes('--help') || rest.includes('-h')) {
+    printScanHelp();
+    process.exit(0);
+  }
+  const args = parseArgs(rest);
 
   if (args.mode === 'local') {
     await runLocalScan(args.localPath!);
@@ -535,17 +602,20 @@ export function runScanCli(): void {
   main().catch((err: unknown) => {
     if (err instanceof FixelConfigError) {
       console.error(`\n  ${C.yellow}Config error:${C.reset} ${err.message}\n`);
-      process.exit(1);
-    }
-    if (err instanceof FigmaApiError) {
+    } else if (err instanceof FigmaApiError) {
       console.error(`\n  ${C.red}Figma API error:${C.reset} ${err.message}\n`);
       if (err.statusCode === 403) {
         console.error(`  Check that FIGMA_ACCESS_TOKEN is set and has read access to this file.\n`);
       }
-      process.exit(1);
+    } else {
+      console.error(`\n  ${C.red}Error:${C.reset} ${err instanceof Error ? err.message : String(err)}\n`);
     }
-    console.error(`\n  ${C.red}Error:${C.reset} ${err instanceof Error ? err.message : String(err)}\n`);
-    process.exit(1);
+    // exitCode + natural drain instead of process.exit(1): hard-exiting while
+    // undici (global fetch) is still tearing down its socket trips a libuv
+    // assertion on Windows (src\win\async.c).  figma-client sends
+    // 'Connection: close', so no keep-alive handle outlives the response and
+    // the drain completes immediately.
+    process.exitCode = 1;
   });
 }
 

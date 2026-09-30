@@ -1,8 +1,8 @@
 {
   "name": "fixel-mcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP server launcher for Fixel — lets AI coding agents call fixel_scan, fixel_verify, and fixel_annotate over the Model Context Protocol.",
-  "license": "FSL-1.1-MIT",
+  "license": "MIT",
   "author": "Amrutha Kollu",
   "repository": {
     "type": "git",
@@ -28,7 +28,7 @@
     "README.md"
   ],
   "dependencies": {
-    "fixel": "^0.2.5"
+    "fixel": "^0.2.7"
   },
   "engines": {
     "node": ">=18"

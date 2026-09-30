@@ -183,6 +183,13 @@ Exit codes: `0` always (run before `fixel generate`) · `1` fatal error only
 
 ### `fixel import`
 
+> **Published styles only.** `fixel import` reads the styles published in the
+> file's Styles panel — nothing else. If a component's text uses a size/weight
+> that is not a published text style, `fixel generate` will stop with a
+> "No typography scale entry" error; add that entry to `typography.scale` in
+> `fixel.config.json` by hand (the error message gives you the exact JSON), or
+> publish the style in Figma and re-run `fixel import --write`.
+
 Reads published FILL and TEXT styles from a Figma file and generates:
 
 - **Token file** (`tokens.ts`) — `export const semantic = {...} as const`
@@ -355,4 +362,4 @@ limited accuracy.
 
 ## License
 
-FSL-1.1 licensed (converts to MIT after two years). See [LICENSE](LICENSE).
+MIT licensed. See [LICENSE](LICENSE).

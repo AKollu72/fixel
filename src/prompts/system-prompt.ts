@@ -1,5 +1,5 @@
 // Copyright (c) 2025 Amrutha Kollu. All rights reserved.
-// Licensed under the Functional Source License, Version 1.1 (FSL-1.1-MIT) — see LICENSE for details.
+// Licensed under the MIT License — see LICENSE for details.
 
 import type { ResolvedConfig } from '../core/config';
 import { buildTypographyTable } from '../core/typography';
@@ -217,7 +217,7 @@ export const Example: FC<ExampleProps> = ({ variant = 'primary', disabled = fals
       },
     }}
   >
-    <Typography variant="MD_Regular">Label</Typography>
+    <Typography variant="bodySm">Label</Typography>
   </Box>
 );
 export default Example;`;

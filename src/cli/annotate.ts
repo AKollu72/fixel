@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Copyright (c) 2025 Amrutha Kollu. All rights reserved.
-// Licensed under the Functional Source License, Version 1.1 (FSL-1.1-MIT) — see LICENSE for details.
+// Licensed under the MIT License — see LICENSE for details.
 
 /**
  * fixel annotate — post drift findings as a Figma comment
@@ -35,6 +35,7 @@ import {
   loadConfig,
   loadEnvFile,
   parseNodeArg,
+  readTextFile,
   resolveFigmaToken,
 } from '../core/config';
 
@@ -205,7 +206,17 @@ async function main(): Promise<void> {
   }
 
   // ── Run drift checks ──────────────────────────────────────────────────────
-  const spec   = JSON.parse(fs.readFileSync(specPath, 'utf8')) as FixelSpec;
+  let spec: FixelSpec;
+  try {
+    // readTextFile strips a UTF-8 BOM (PowerShell's Out-File default).
+    spec = JSON.parse(readTextFile(specPath)) as FixelSpec;
+  } catch (err) {
+    console.error(
+      `\n  ${C.red}✗${C.reset}  Spec file is not valid JSON: ${path.relative(process.cwd(), specPath)}\n` +
+      `     ${err instanceof Error ? err.message : String(err)}\n`,
+    );
+    process.exit(1);
+  }
   const code   = fs.readFileSync(codePath, 'utf8');
   const checks = runDriftChecks(code, spec, overrides, args.component, config);
   const status = componentStatus(checks);

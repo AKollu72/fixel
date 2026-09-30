@@ -2,6 +2,117 @@
 
 All notable changes to Fixel are documented here.
 
+## [0.2.8] — 2026-09-30
+
+### Fixed
+
+- **Missing-typography-scale error now includes the remedy** — when `generate`
+  (or live `verify --node`) hits a text size/weight with no `typography.scale`
+  entry, the error prints the exact copy-pasteable JSON entry (keyed by the
+  `fontSize/fontWeight` it saw, with the node's real line-height when
+  available), plus the alternative: publish the text style in Figma and re-run
+  `fixel import --write`. Found in the first live 0.2.7 pipeline pass — the
+  documented import → generate flow dead-ends on unpublished text styles.
+
+### Changed
+
+- **README documents the published-styles-only limitation of `import`** — a
+  callout in the import section states that unpublished text used by a node
+  must be added to `typography.scale` manually.
+- **Compiled tests no longer ship in the npm package** — `!dist/cli/__tests__`
+  added to the `files` whitelist (~37KB smaller unpacked).
+
+### Tests
+
+- 2 new tests asserting the missing-scale-entry error contains the remedy
+  JSON and the publish-and-reimport alternative. Suite: 58 tests.
+
+---
+
+## [0.2.7] — 2026-09-29
+
+### Fixed
+
+- **`fixel init` no longer breaks `fixel scan`** — when `fixel.config.json`
+  exists but the configured token file hasn't been generated yet, `scan` warns
+  ("not found — run fixel import") and scans anyway instead of hard-failing.
+  The documented quickstart sequence (init → scan) now works.
+- **The token file is never flagged** — `fixel scan` excludes exactly
+  `config.tokens.file` from the audit. Raw hex is required there; with the
+  default config layout (`./src/tokens/colors.ts` under the scanned `./src`)
+  every project previously got a permanent false positive. Sibling files in
+  the same directory are still scanned (`src/components/tokens.ts` layouts).
+  Scanning the token file directly reports the exclusion and exits 0.
+- **Windows no longer crashes on Figma API errors** — `import`,
+  `scan --node`, `generate`, and `verify --node` error paths previously died
+  with a libuv assertion (`src\win\async.c:76`, exit 0xC0000409) because
+  `process.exit()` raced undici's socket teardown. Figma requests now send
+  `Connection: close` and the CLI error handlers set `process.exitCode` and
+  drain instead of hard-exiting.
+- **UTF-8 BOM tolerated in JSON inputs** — `fixel.config.json` and
+  `*.fixel.json` specs written by BOM-emitting tools (PowerShell `Out-File`)
+  now parse. Previously: `Unexpected token '﻿'`.
+- **`fixel verify` without a config exits 2, not 1** — matching the "nothing
+  to verify yet" semantics the CI recipe documents, with guidance pointing at
+  `fixel init`. Previously a config-less repo failed the build.
+- **Orphaned specs are reported** — a `<Name>.fixel.json` whose `<Name>.tsx`
+  was deleted now produces a warning naming the spec. Previously the component
+  silently vanished from verification.
+- **Malformed spec errors name the file** — `verify` and `annotate` now report
+  which `.fixel.json` failed to parse (and `verify` continues with the other
+  components) instead of printing a bare JSON error.
+
+### Changed
+
+- **License: MIT** — switched from FSL-1.1-MIT to plain MIT, effective this
+  release. LICENSE, package metadata, README, and source headers updated.
+- **Generic placeholder typography scale** — `fixel init` no longer ships a
+  specific design system's scale (H1/LG_Bold/…) as the default. The template
+  scale is now clearly generic (`heading-1`, `body`, `caption`, …) and init
+  prints a warning that the names must be replaced. Example token names in
+  prompts and docs were genericised the same way.
+- **Help text scoped env-var requirements** — `FIGMA_ACCESS_TOKEN` is marked
+  required only for `import` / `generate` / `annotate`, and the help screen
+  states that `scan` and `verify` run offline with no token.
+
+### Tests
+
+- 11 new CLI regression tests (`src/cli/__tests__/p0-fixes.test.ts`) covering
+  the init→scan path, token-file exclusion, BOM handling, verify exit codes,
+  orphaned specs, and named malformed-spec errors. Suite: 55 tests.
+
+---
+
+## [0.2.6] — 2026-09-28
+
+### Fixed
+
+- **ANSI codes stripped in non-TTY and `NO_COLOR` contexts** — terminal colour
+  codes are now gated on `process.stdout.isTTY` and the `NO_COLOR` environment
+  variable. Output piped to a file, CI log, or an MCP tool response is always
+  plain text. (`src/core/color.ts` centralises the gate; all CLI commands use
+  it.)
+- **`--help` on subcommands exits 0** — `fixel scan --help`, `fixel verify
+  --help`, and `fixel init --help` now print per-command usage and exit 0.
+  Previously `--help` was either ignored (ran the command instead) or exited 1.
+- **Single-file scan paths work** — `fixel scan ./src/Button.tsx` now scans
+  that file directly. Previously, passing a file path silently reported "No
+  .tsx files found" and exited 0. Unsupported extensions (e.g. `.png`) exit 1
+  with a clear message listing the accepted types.
+- **Stale `OPENAI_API_KEY` references removed** — the env-var entry was removed
+  from `fixel --help` output and the `fixel init` setup flow. Anthropic has
+  been the only supported AI provider since 0.2.1; the references were
+  misleading.
+
+### Changed
+
+- **Scan summary includes next-step guidance** — a single dim line now appears
+  after every local scan summary. Clean run: points at `fixel verify` and
+  notes the Figma token prerequisite. Violations: prompts the user to fix and
+  re-run, with the same Figma-gated note for the next step.
+
+---
+
 ## [0.2.5] — 2026-09-09
 
 ### Changed
