@@ -21,6 +21,9 @@ All notable changes to Fixel are documented here.
   must be added to `typography.scale` manually.
 - **Compiled tests no longer ship in the npm package** — `!dist/cli/__tests__`
   added to the `files` whitelist (~37KB smaller unpacked).
+- **Node 18 support dropped** — EOL since April 2025, and `@inquirer/prompts`
+  requires ≥ 20.17 (its top-level import made even `fixel init --help` exit 1
+  on Node 18). Engines now `>=20.17.0`; CI matrix is 20 / 22 / 24.
 
 ### Tests
 

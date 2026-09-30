@@ -108,7 +108,7 @@ elevated prompt, or use `npx fixel <command>` throughout.
 
 ## Prerequisites
 
-**Node.js ≥ 18.**
+**Node.js ≥ 20.17.**
 
 **Figma personal access token** — create at figma.com → Account → Settings
 → Security → Personal access tokens. Required scopes:
