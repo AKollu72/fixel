@@ -114,6 +114,9 @@ const BUILT_IN_PATTERNS: PatternDef[] = [
   // stripped before scanning).  Pass 2 uses a simple backtick-pair scan;
   // escaped backticks and ${} boundaries inside a single literal are not
   // tracked — this is adequate for generated component code.
+  //
+  // Escape hatch: add `// fixel-ignore` on the same line to suppress for a
+  // deliberate literal (same syntax and placement as the other patterns).
   {
     id:         'raw-hex',
     severity:   'error',
@@ -124,7 +127,10 @@ const BUILT_IN_PATTERNS: PatternDef[] = [
       // ── Pass 1: hex immediately adjacent to a string delimiter (', ", `) ──
       const reAdj = /['"`]#[0-9a-fA-F]{3,8}['"`]/g;
       for (const m of stripped.matchAll(reAdj)) {
-        const pos = positionAt(original, m.index ?? 0);
+        const idx = m.index ?? 0;
+        // Skip lines with an explicit ignore comment
+        if (/fixel-ignore/i.test(sourceLine(original, idx))) continue;
+        const pos = positionAt(original, idx);
         violations.push({
           pattern:    'raw-hex',
           severity:   'error',
@@ -133,7 +139,8 @@ const BUILT_IN_PATTERNS: PatternDef[] = [
           snippet:    m[0].slice(0, 120),
           suggestion:
             'Replace this hex literal with a semantic token from your token file.\n' +
-            '  Run "fixel scan --node <id>" to identify which token covers this colour.',
+            '  Run "fixel scan --node <id>" to identify which token covers this colour.\n' +
+            '  Intentional literal? Add on the same line: // fixel-ignore',
         });
       }
 
@@ -153,16 +160,20 @@ const BUILT_IN_PATTERNS: PatternDef[] = [
           const before = posInTpl > 0 ? tplContent[posInTpl - 1] : '';
           if (before === '`') continue;
           const globalIdx = tplStartIdx + posInTpl;
+          const line      = sourceLine(original, globalIdx);
+          // Skip lines with an explicit ignore comment
+          if (/fixel-ignore/i.test(line)) continue;
           const pos       = positionAt(original, globalIdx);
           violations.push({
             pattern:    'raw-hex',
             severity:   'error',
             line:       pos.line,
             column:     pos.column,
-            snippet:    sourceLine(original, globalIdx).slice(0, 120),
+            snippet:    line.slice(0, 120),
             suggestion:
               'Replace this hex literal with a semantic token from your token file.\n' +
-              '  Run "fixel scan --node <id>" to identify which token covers this colour.',
+              '  Run "fixel scan --node <id>" to identify which token covers this colour.\n' +
+              '  Intentional literal? Add on the same line: // fixel-ignore',
           });
         }
       }
@@ -175,6 +186,9 @@ const BUILT_IN_PATTERNS: PatternDef[] = [
   // Fires on any `rgba(` or `rgb(` function call in generated code.
   // CSS colour functions should always be pre-resolved to semantic tokens;
   // dynamic alpha blending belongs in the token file, not in component code.
+  //
+  // Escape hatch: add `// fixel-ignore` on the same line to suppress for a
+  // deliberate call (same syntax and placement as the other patterns).
   {
     id:         'raw-rgba',
     severity:   'error',
@@ -183,18 +197,22 @@ const BUILT_IN_PATTERNS: PatternDef[] = [
       const violations: AuditViolation[] = [];
       const re = /rgba?\s*\(/g;
       for (const m of stripped.matchAll(re)) {
-        const idx = m.index ?? 0;
+        const idx  = m.index ?? 0;
+        const line = sourceLine(original, idx);
+        // Skip lines with an explicit ignore comment
+        if (/fixel-ignore/i.test(line)) continue;
         const pos = positionAt(original, idx);
         violations.push({
           pattern:    'raw-rgba',
           severity:   'error',
           line:       pos.line,
           column:     pos.column,
-          snippet:    sourceLine(original, idx).slice(0, 120),
+          snippet:    line.slice(0, 120),
           suggestion:
             'Replace this rgba() / rgb() call with a semantic token.\n' +
             '  Semi-transparent colours should be declared in your token file, ' +
-            'not computed inline.',
+            'not computed inline.\n' +
+            '  Intentional call? Add on the same line: // fixel-ignore',
         });
       }
       return violations;

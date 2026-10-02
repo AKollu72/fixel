@@ -25,6 +25,8 @@ import { spawnSync }        from 'node:child_process';
 
 import { stripBom, loadConfig } from '../../core/config';
 import { resolveTypographyToken } from '../../core/typography';
+import { auditCode } from '../../core/audit';
+import type { ResolvedConfig } from '../../core/config';
 
 const DIST_INDEX = path.resolve(__dirname, '..', '..', '..', 'dist', 'index.js');
 
@@ -231,6 +233,46 @@ describe('verify — exit codes and BOM specs (P1 fix 5)', () => {
     const r = runCli(['verify'], tmpDir);
     expect(r.stdout + r.stderr).not.toContain('Unexpected token');
     expect(r.status).toBe(0);
+  });
+});
+
+// ─── 0.2.9: // fixel-ignore works on raw-hex and raw-rgba ─────────────────────
+
+describe('auditCode — fixel-ignore on raw-hex and raw-rgba (0.2.9)', () => {
+  const cfg = {
+    framework: 'mui',
+    tokens: { importPath: '@/tokens/colors' },
+    prohibitedPatterns: ['raw-hex', 'raw-rgba'],
+  } as unknown as ResolvedConfig;
+
+  it('an ignored hex passes; an un-ignored one on another line still fails', () => {
+    const code =
+      `const ok  = "#1a73e8"; // fixel-ignore\n` +
+      `const bad = "#ff0000";\n`;
+    const violations = auditCode(code, cfg);
+    expect(violations).toHaveLength(1);
+    expect(violations[0].pattern).toBe('raw-hex');
+    expect(violations[0].line).toBe(2);
+  });
+
+  it('suppresses template-literal hex (pass 2) on an ignored line', () => {
+    const code = 'const css = `color: #1a73e8;`; // fixel-ignore\n';
+    expect(auditCode(code, cfg)).toHaveLength(0);
+  });
+
+  it('an ignored rgba passes; an un-ignored one still fails', () => {
+    const code =
+      `const ok  = "rgba(0,0,0,0.5)"; // fixel-ignore\n` +
+      `const bad = "rgb(1,2,3)";\n`;
+    const violations = auditCode(code, cfg);
+    expect(violations).toHaveLength(1);
+    expect(violations[0].pattern).toBe('raw-rgba');
+    expect(violations[0].line).toBe(2);
+  });
+
+  it('the raw-hex suggestion advertises the escape hatch', () => {
+    const violations = auditCode(`const c = "#ff0000";\n`, cfg);
+    expect(violations[0].suggestion).toContain('// fixel-ignore');
   });
 });
 

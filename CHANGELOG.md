@@ -6,6 +6,20 @@ All notable changes to Fixel are documented here.
 > for early testing and detailed feedback in June 2026 that shaped several of
 > the fixes below.
 
+## [Unreleased]
+
+### Fixed
+
+- **`// fixel-ignore` now works on `raw-hex` and `raw-rgba`** — the same
+  same-line comment syntax the `bare-border-radius` and Tailwind-arbitrary
+  rules already honored. Previously the two most common patterns had no
+  per-line escape hatch, and verify's "use // fixel-ignore" advice was
+  silently untrue for them. Their suggestions now advertise the hatch, and
+  verify's failure guidance mentions it. Ships with the next release
+  alongside `fixel adopt`.
+
+---
+
 ## [0.2.8] — 2026-09-30
 
 ### Fixed

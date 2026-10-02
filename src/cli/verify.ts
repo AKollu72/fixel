@@ -560,7 +560,8 @@ async function main(): Promise<void> {
       console.log(
         `\n  ${C.red}Components above do not match their Figma specification.${C.reset}\n` +
         `  Fix the mismatches, run fixel generate --force to regenerate,\n` +
-        `  or use --write-overrides to register intentional deviations.\n`,
+        `  or use --write-overrides to register intentional deviations.\n` +
+        `  For Audit [pattern] findings, add ${C.cyan}// fixel-ignore${C.reset} on the offending line.\n`,
       );
     }
     process.exit(1);
